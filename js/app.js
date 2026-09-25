@@ -114,6 +114,17 @@ function normalizeInventoryData(){
 normalizeInventoryData();
 const inventoryCategories=()=>[...new Set((data.categories||[]).map(x=>String(x).trim()).filter(Boolean))];
 const inventorySuppliers=()=>[...new Set((data.products||[]).map(p=>String(p.supplier||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+
+const PRODUCT_UNITS=['un','kg','g','saco','L','mL'];
+const productUnit=p=>String(p?.unit||'un');
+const isFractionalUnit=u=>['kg','g','L','mL'].includes(String(u||''));
+const unitStep=p=>isFractionalUnit(productUnit(p))?'0.001':'1';
+const qtyLabel=(qty,unit='un')=>{
+  const n=Number(qty||0);
+  const formatted=n.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:3});
+  return `${formatted} ${unit}`;
+};
+
 const inventoryStatus=p=>Number(p.stock||0)<=Number(p.min||0)?'Baixo Estoque':'Normal';
 const inventoryMovesToday=()=>{
   const day=today();
@@ -122,7 +133,7 @@ const inventoryMovesToday=()=>{
   const adjustments=(data.stockAdjustments||[]).filter(a=>String(a.date||'').slice(0,10)===day).length;
   return entries+sales+adjustments;
 };
-function exportInventoryCSV(rows){downloadCSV('estoque.csv',['Código','Produto','Categoria','Marca','Estoque Atual','Estoque Mínimo','Fornecedor','Custo Unit.','Preço Venda','Status'],rows.map(p=>[p.code||p.id,p.name,p.category||'',p.brand||'',p.stock||0,p.min||0,p.supplier||'',p.cost||0,p.price||0,inventoryStatus(p)]))}
+function exportInventoryCSV(rows){downloadCSV('estoque.csv',['Código','Produto','Categoria','Marca','Unidade','Estoque Atual','Estoque Mínimo','Fornecedor','Custo Unit.','Preço Venda','Status'],rows.map(p=>[p.code||p.id,p.name,p.category||'',p.brand||'',productUnit(p),p.stock||0,p.min||0,p.supplier||'',p.cost||0,p.price||0,inventoryStatus(p)]))}
 function parseSimpleCSV(text){
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
   if(!lines.length)return[];
@@ -163,8 +174,12 @@ function productForm(product=null){
   normalizeInventoryData();
   let photo=product?.photo||'';
   const categories=inventoryCategories();
-  modal(`<h3>${product?'Editar':'Novo'} produto</h3><p class="modal-subtitle">Cadastre o item com foto, categoria, fornecedor, custo e preço de venda.</p><div class="form-grid stock-form-grid"><label class="full"><span>Foto do produto</span><div id="photoBox" class="photo-box"></div></label><label>Código<input id="pCode" value="${esc(product?.code||'')}" placeholder="Ex.: PRD-0012"></label><label>Produto<input id="pName" value="${esc(product?.name||'')}" placeholder="Nome do produto"></label><label>Marca<input id="pBrand" value="${esc(product?.brand||'')}" placeholder="Marca"></label><label>Categoria<div class="stock-inline-field"><input id="pCategory" list="categoryList" value="${esc(product?.category||'')}" placeholder="Selecione ou digite"><datalist id="categoryList">${categories.map(cat=>`<option value="${esc(cat)}"></option>`).join('')}</datalist><button type="button" class="btn soft" id="manageCategoryFromProduct">Categorias</button></div></label><label>Fornecedor<input id="pSupplier" value="${esc(product?.supplier||'')}" placeholder="Fornecedor"></label><label>Estoque atual<input id="pStock" type="number" min="0" step="1" value="${Number(product?.stock||0)}"></label><label>Estoque mínimo<input id="pMin" type="number" min="0" step="1" value="${Number(product?.min ?? data.settings?.defaultMinStock ?? 0)}"></label><label>Custo unitário<input id="pCost" type="number" min="0" step="0.01" value="${Number(product?.cost||0)}"></label><label>Preço de venda<input id="pPrice" type="number" min="0" step="0.01" value="${Number(product?.price||0)}"></label><label class="full">Descrição<input id="pDescription" value="${esc(product?.description||'')}" placeholder="Descrição curta do item"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelProduct">Cancelar</button><button class="btn primary" id="saveProduct">Salvar produto</button></div>`);
+  modal(`<h3>${product?'Editar':'Novo'} produto</h3><p class="modal-subtitle">Cadastre o item com foto, categoria, fornecedor, custo e preço de venda.</p><div class="form-grid stock-form-grid"><label class="full"><span>Foto do produto</span><div id="photoBox" class="photo-box"></div></label><label>Código<input id="pCode" value="${esc(product?.code||'')}" placeholder="Ex.: PRD-0012"></label><label>Produto<input id="pName" value="${esc(product?.name||'')}" placeholder="Nome do produto"></label><label>Marca<input id="pBrand" value="${esc(product?.brand||'')}" placeholder="Marca"></label><label>Categoria<div class="stock-inline-field"><input id="pCategory" list="categoryList" value="${esc(product?.category||'')}" placeholder="Selecione ou digite"><datalist id="categoryList">${categories.map(cat=>`<option value="${esc(cat)}"></option>`).join('')}</datalist><button type="button" class="btn soft" id="manageCategoryFromProduct">Categorias</button></div></label><label>Fornecedor<input id="pSupplier" value="${esc(product?.supplier||'')}" placeholder="Fornecedor"></label><label>Unidade de venda<select id="pUnit">${PRODUCT_UNITS.map(u=>`<option value="${u}" ${u===productUnit(product)?'selected':''}>${u}</option>`).join('')}</select></label><label>Estoque atual<input id="pStock" type="number" min="0" step="${isFractionalUnit(productUnit(product))?'0.001':'1'}" value="${Number(product?.stock||0)}"></label><label>Estoque mínimo<input id="pMin" type="number" min="0" step="${isFractionalUnit(productUnit(product))?'0.001':'1'}" value="${Number(product?.min ?? data.settings?.defaultMinStock ?? 0)}"></label><label>Custo por unidade de venda<input id="pCost" type="number" min="0" step="0.01" value="${Number(product?.cost||0)}"></label><label>Preço por unidade de venda<input id="pPrice" type="number" min="0" step="0.01" value="${Number(product?.price||0)}"></label><label class="full">Descrição<input id="pDescription" value="${esc(product?.description||'')}" placeholder="Descrição curta do item"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelProduct">Cancelar</button><button class="btn primary" id="saveProduct">Salvar produto</button></div>`);
   photoPicker(photo,v=>photo=v);
+  $('#pUnit')?.addEventListener('change',()=>{
+    const step=isFractionalUnit($('#pUnit').value)?'0.001':'1';
+    $('#pStock').step=step;$('#pMin').step=step;
+  });
   $('#cancelProduct').onclick=closeModal;
   $('#manageCategoryFromProduct').onclick=(e)=>{e.preventDefault(); manageCategoriesModal()};
   $('#saveProduct').onclick=()=>{
@@ -174,7 +189,7 @@ function productForm(product=null){
     if(!inventoryCategories().includes(category))data.categories.push(category);
     data.categories=[...new Set(data.categories)];
     const obj=product||{id:uid('PRD')};
-    Object.assign(obj,{code:$('#pCode').value.trim()||obj.code||obj.id,name,brand:$('#pBrand').value.trim(),category,supplier:$('#pSupplier').value.trim(),stock:Math.max(0,Number($('#pStock').value||0)),min:Math.max(0,Number($('#pMin').value||0)),cost:Math.max(0,Number($('#pCost').value||0)),price:Math.max(0,Number($('#pPrice').value||0)),photo,description:$('#pDescription').value.trim()});
+    Object.assign(obj,{code:$('#pCode').value.trim()||obj.code||obj.id,name,brand:$('#pBrand').value.trim(),category,supplier:$('#pSupplier').value.trim(),unit:$('#pUnit').value||'un',stock:Math.max(0,Number($('#pStock').value||0)),min:Math.max(0,Number($('#pMin').value||0)),cost:Math.max(0,Number($('#pCost').value||0)),price:Math.max(0,Number($('#pPrice').value||0)),photo,description:$('#pDescription').value.trim()});
     if(!product)data.products.push(obj);
     save();
     closeModal();
@@ -184,7 +199,7 @@ function productForm(product=null){
 }
 function openInventoryAdjustment(productId=''){
   if(!data.products.length)return toast('Cadastre um produto primeiro.');
-  modal(`<h3>Ajuste de estoque</h3><p class="modal-subtitle">Atualize a quantidade do item sem precisar abrir uma nova entrada.</p><div class="form-grid"><label class="full">Produto<select id="adjProduct">${data.products.map(p=>`<option value="${p.id}" ${p.id===productId?'selected':''}>${esc(p.name)} • ${esc(p.code||p.id)}</option>`).join('')}</select></label><label>Tipo<select id="adjType"><option value="entrada">Entrada</option><option value="saida">Saída</option><option value="definir">Definir saldo</option></select></label><label>Quantidade<input id="adjQty" type="number" min="0" step="1" value="1"></label><label class="full">Motivo<input id="adjReason" placeholder="Ex.: conferência, quebra, acerto de saldo"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelAdj">Cancelar</button><button class="btn primary" id="saveAdj">Aplicar ajuste</button></div>`);
+  modal(`<h3>Ajuste de estoque</h3><p class="modal-subtitle">Atualize a quantidade do item sem precisar abrir uma nova entrada.</p><div class="form-grid"><label class="full">Produto<select id="adjProduct">${data.products.map(p=>`<option value="${p.id}" ${p.id===productId?'selected':''}>${esc(p.name)} • ${esc(p.code||p.id)}</option>`).join('')}</select></label><label>Tipo<select id="adjType"><option value="entrada">Entrada</option><option value="saida">Saída</option><option value="definir">Definir saldo</option></select></label><label>Quantidade<input id="adjQty" type="number" min="0" step="0.001" value="1"></label><label class="full">Motivo<input id="adjReason" placeholder="Ex.: conferência, quebra, acerto de saldo"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelAdj">Cancelar</button><button class="btn primary" id="saveAdj">Aplicar ajuste</button></div>`);
   $('#cancelAdj').onclick=closeModal;
   $('#saveAdj').onclick=()=>{
     const p=data.products.find(x=>x.id===$('#adjProduct').value);
@@ -214,7 +229,7 @@ function openInventoryImport(){
         if(rows.length<2)return toast('Arquivo sem dados para importar.');
         const headers=rows.shift().map(h=>inventorySlug(h));
         const idx=name=>headers.findIndex(h=>h===name||h.includes(name));
-        const map={code:idx('codigo'),name:idx('produto'),category:idx('categoria'),brand:idx('marca'),supplier:idx('fornecedor'),stock:idx('estoque'),min:idx('minimo'),cost:idx('custo'),price:idx('preco')};
+        const map={code:idx('codigo'),name:idx('produto'),category:idx('categoria'),brand:idx('marca'),unit:idx('unidade'),supplier:idx('fornecedor'),stock:idx('estoque'),min:idx('minimo'),cost:idx('custo'),price:idx('preco')};
         let count=0;
         rows.forEach(cols=>{
           const name=(cols[map.name]||'').trim();
@@ -223,7 +238,7 @@ function openInventoryImport(){
           const existing=data.products.find(p=>String(p.code||'').trim()===code||String(p.id||'').trim()===code);
           const category=(cols[map.category]||'Sem categoria').trim()||'Sem categoria';
           const obj=existing||{id:uid('PRD'),photo:'',description:''};
-          Object.assign(obj,{code,name,category,brand:(cols[map.brand]||'').trim(),supplier:(cols[map.supplier]||'').trim(),stock:inventoryNumber(cols[map.stock]),min:inventoryNumber(cols[map.min]),cost:inventoryNumber(cols[map.cost]),price:inventoryNumber(cols[map.price])});
+          Object.assign(obj,{code,name,category,brand:(cols[map.brand]||'').trim(),unit:(map.unit>=0?(cols[map.unit]||'').trim():'')||'un',supplier:(cols[map.supplier]||'').trim(),stock:inventoryNumber(cols[map.stock]),min:inventoryNumber(cols[map.min]),cost:inventoryNumber(cols[map.cost]),price:inventoryNumber(cols[map.price])});
           if(!existing)data.products.push(obj);
           if(!data.categories.includes(category))data.categories.push(category);
           count++;
@@ -330,7 +345,7 @@ function editSaleModal(saleId){
   if(!sale)return;
   if(saleHasPayments(saleId))return toast('Essa venda possui pagamento no fiado. Para manter o histórico correto, ela não pode ser editada.');
   const originalLines=(sale.lines||[]).map(x=>({...x}));
-  const lineRows=(sale.lines||[]).map((line,i)=>`<tr><td>${esc(line.name||'-')}</td><td><input class="mini-input" data-edit-sale-qty="${i}" type="number" min="1" value="${Number(line.qty||1)}"></td><td><input class="mini-input" data-edit-sale-price="${i}" type="number" min="0" step="0.01" value="${Number(line.price||0)}"></td><td><input class="mini-input" data-edit-sale-discount="${i}" type="number" min="0" step="0.01" value="${Number(line.discount||0)}"></td></tr>`).join('');
+  const lineRows=(sale.lines||[]).map((line,i)=>`<tr><td>${esc(line.name||'-')}</td><td><div class="edit-sale-qty"><input class="mini-input" data-edit-sale-qty="${i}" type="number" min="${isFractionalUnit(line.unit)?'0.001':'1'}" step="${isFractionalUnit(line.unit)?'0.001':'1'}" value="${Number(line.qty||1)}"><span>${esc(line.unit||'un')}</span></div></td><td><input class="mini-input" data-edit-sale-price="${i}" type="number" min="0" step="0.01" value="${Number(line.price||0)}"></td><td><input class="mini-input" data-edit-sale-discount="${i}" type="number" min="0" step="0.01" value="${Number(line.discount||0)}"></td></tr>`).join('');
   const currentType=sale.paymentType||(String(sale.payment||'').startsWith('Cartão')?'Cartão':sale.payment||'PIX');
   const currentCard=sale.cardType||(/Débito/i.test(sale.payment||'')?'Débito':'Crédito');
   modal(`<h3>Editar venda</h3><p class="modal-subtitle">Ajuste cliente, pagamento e quantidades. O estoque será recalculado automaticamente.</p><div class="form-grid"><label>Cliente<select id="editSaleClient"><option value="">Venda sem cliente</option>${data.clients.map(c=>`<option value="${c.id}" ${c.id===sale.clientId?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label><label>Forma de pagamento<select id="editSalePayment">${['PIX','Cartão','Dinheiro','Boleto','Fiado'].map(x=>`<option ${x===currentType?'selected':''}>${x}</option>`).join('')}</select></label><label id="editSaleCardBox">Tipo do cartão<select id="editSaleCard"><option ${currentCard==='Crédito'?'selected':''}>Crédito</option><option ${currentCard==='Débito'?'selected':''}>Débito</option></select></label><label id="editSaleDueBox">Vencimento<input id="editSaleDue" type="date" value="${saleDebt(sale.id)?.due||new Date(Date.now()+30*86400000).toISOString().slice(0,10)}"></label><label class="full">Observações<input id="editSaleObs" value="${esc(sale.obs||'')}"></label></div><div class="table-wrap"><table class="table"><thead><tr><th>Produto</th><th>Qtd.</th><th>Valor unit.</th><th>Desconto</th></tr></thead><tbody>${lineRows}</tbody></table></div><div class="stock-modal-actions"><button class="btn outline" id="cancelEditSale">Cancelar</button><button class="btn primary" id="saveEditSale">Salvar alterações</button></div>`);
@@ -467,6 +482,7 @@ function downloadBudgetPdf(cart,clientId,obs=''){
   const lines=cart.map(x=>({
     name:x.name||'Produto',
     qty:Number(x.qty||0),
+    unit:productUnit(x),
     price:Number(x.price||0),
     discount:Number(x.discount||0),
     total:(Number(x.qty||0)*Number(x.price||0))-Number(x.discount||0)
@@ -519,7 +535,7 @@ function downloadBudgetPdf(cart,clientId,obs=''){
 
       chunk.forEach(item=>{
         c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 48 ${y} Td (${pdfEsc(pdfTruncate(item.name,38))}) Tj ET\n`;
-        c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 315 ${y} Td (${item.qty}) Tj ET\n`;
+        c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 315 ${y} Td (${pdfEsc(qtyLabel(item.qty,item.unit))}) Tj ET\n`;
         c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 355 ${y} Td (${pdfEsc(pdfMoney(item.price))}) Tj ET\n`;
         c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 425 ${y} Td (${pdfEsc(pdfMoney(item.discount))}) Tj ET\n`;
         c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 490 ${y} Td (${pdfEsc(pdfMoney(item.total))}) Tj ET\n`;
@@ -551,7 +567,7 @@ function downloadBudgetPdf(cart,clientId,obs=''){
       y-=24;
       chunk.forEach(item=>{
         c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 48 ${y} Td (${pdfEsc(pdfTruncate(item.name,38))}) Tj ET\n`;
-        c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 315 ${y} Td (${item.qty}) Tj ET\n`;
+        c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 315 ${y} Td (${pdfEsc(qtyLabel(item.qty,item.unit))}) Tj ET\n`;
         c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 355 ${y} Td (${pdfEsc(pdfMoney(item.price))}) Tj ET\n`;
         c+=`BT /F1 8.5 Tf 0.12 0.18 0.15 rg 490 ${y} Td (${pdfEsc(pdfMoney(item.total))}) Tj ET\n`;
         c+=`0.9 0.93 0.91 RG 42 ${y-6} m 553 ${y-6} l S\n`;
@@ -588,7 +604,7 @@ function printSaleReceipt(sale){
   const total=Number(sale.total||Math.max(0,subtotal-discount));
   const win=window.open('','_blank','width=820,height=900');
   if(!win)return toast('O navegador bloqueou a janela de impressão.');
-  const itemRows=lines.map(x=>`<tr><td><strong>${esc(x.name||'Produto')}</strong><small>${esc(x.productId||'')}</small></td><td>${Number(x.qty||0)}</td><td>${money(x.price||0)}</td><td>${Number(x.discount||0)>0?money(x.discount):'-'}</td><td>${money((Number(x.qty||0)*Number(x.price||0))-Number(x.discount||0))}</td></tr>`).join('');
+  const itemRows=lines.map(x=>`<tr><td><strong>${esc(x.name||'Produto')}</strong><small>${esc(x.productId||'')}</small></td><td>${esc(qtyLabel(x.qty,x.unit||'un'))}</td><td>${money(x.price||0)}</td><td>${Number(x.discount||0)>0?money(x.discount):'-'}</td><td>${money((Number(x.qty||0)*Number(x.price||0))-Number(x.discount||0))}</td></tr>`).join('');
   win.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Comprovante de venda</title><style>
   *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#17251e;margin:0;background:#f2f4f1}.paper{width:760px;margin:24px auto;background:#fff;padding:28px 34px;border:1px solid #d8e1da;border-radius:16px}.head{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #087649;padding-bottom:16px}.brand h1{margin:0;color:#075f3c;font-size:25px}.brand p,.meta p{margin:4px 0;font-size:12px;color:#58695f}.meta{text-align:right}.title{margin:22px 0 8px;font-size:20px}.client{display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;padding:12px;background:#f4f8f5;border-radius:10px;font-size:12px}.client strong{display:block;font-size:10px;text-transform:uppercase;color:#718078;margin-bottom:3px}table{width:100%;border-collapse:collapse;margin-top:18px}th{background:#eaf4ed;color:#1b4b34;text-align:left;font-size:10px;padding:9px}td{font-size:11px;padding:10px 9px;border-bottom:1px solid #e5e9e6}td small{display:block;color:#849087;margin-top:3px}.totals{width:320px;margin:18px 0 0 auto}.totals div{display:flex;justify-content:space-between;padding:6px 0;font-size:12px}.totals .final{font-size:18px;font-weight:800;color:#087649;border-top:2px solid #dbe8df;margin-top:4px;padding-top:10px}.foot{margin-top:24px;padding-top:14px;border-top:1px dashed #cfd8d2;text-align:center;font-size:10px;color:#6f7d75}.print{display:block;margin:16px auto 0;border:0;background:#087649;color:#fff;padding:11px 18px;border-radius:9px;font-weight:700}@media print{body{background:#fff}.paper{margin:0;width:100%;border:0;border-radius:0}.print{display:none}}</style></head><body><div class="paper">
   <div class="head"><div class="brand"><h1>${esc(s.store||'D Chácara Empório')}</h1><p>CNPJ: ${esc(s.cnpj||'-')}</p><p>${esc(s.email||'')} ${s.phone?' • '+esc(s.phone):''}</p><p>${esc(s.address||'')} ${s.city?' - '+esc(s.city):''}${s.state?'/'+esc(s.state):''}</p></div><div class="meta"><strong>COMPROVANTE DE VENDA</strong><p>Venda: ${esc(sale.id||'-')}</p><p>${esc(pdfDateTime(sale.date))}</p><p>Vendedor: ${esc(sale.seller||'-')}</p></div></div>
@@ -624,11 +640,11 @@ function renderVendas(){
   const grandTotal=()=>Math.max(0,subtotal()-discounts());
   const salesToday=()=>data.sales.filter(s=>(s.date||'').slice(0,10)===today());
   const draw=()=>{
-    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.stock)<=10?'txt-warn':'txt-ok'}">${x.stock} un</td><td><div class="qty"><button data-dec="${i}">−</button><span>${x.qty}</span><button data-inc="${i}">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><input class="mini-input" data-discount="${i}" type="number" min="0" step="0.01" value="${x.discount||0}"></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
+    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.stock)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.stock,productUnit(x))}</td><td><div class="qty"><button data-dec="${i}">−</button><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(productUnit(x))?'0.001':'1'}" step="${unitStep(x)}" value="${x.qty}"><span class="qty-unit">${esc(productUnit(x))}</span><button data-inc="${i}">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><input class="mini-input" data-discount="${i}" type="number" min="0" step="0.01" value="${x.discount||0}"></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
     $('#pdvCart').innerHTML=cart.length?`<div class="table-wrap sales-table-wrap"><table class="table sales-table"><thead><tr><th>Produto</th><th>Estoque</th><th>Quantidade</th><th>Valor unit.</th><th>Desconto</th><th>Total</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="pdv-empty-cart">${ic('cart')}<strong>Carrinho vazio</strong><small>Pesquise um produto acima e clique em <b>Lançar produto</b>.</small></div>`;
     const itemCount=cart.reduce((s,x)=>s+Number(x.qty||0),0);
     $('#pdvItemCount').textContent=`${cart.length} produto${cart.length===1?'':'s'}`;
-    $('#summaryItemCount').textContent=`Subtotal (${itemCount} itens)`;
+    $('#summaryItemCount').textContent=`Subtotal (${cart.length} produto${cart.length===1?'':'s'})`;
     $('#pdvSubtotal').textContent=money(subtotal());
     $('#pdvDiscount').textContent='- '+money(discounts());
     $('#pdvTotal').textContent=money(grandTotal());
@@ -637,8 +653,14 @@ function renderVendas(){
     if($('#clientSelected'))$('#clientSelected').innerHTML=selectedClient?`<div class="selected-client compact"><div class="selected-client-icon">${ic('users')}</div><div><strong>${esc(clientName(selectedClient))}</strong><small>Cliente selecionado para esta venda</small></div><button class="icon-btn" id="clearSaleClient">${ic('x')}</button></div>`:'';
     if($('#clearSaleClient'))$('#clearSaleClient').onclick=()=>{selectedClient='';$('#clientSelect').value='';draw()};
     $$('#pdvCart [data-rm]').forEach(b=>b.onclick=()=>{cart.splice(Number(b.dataset.rm),1);draw()});
-    $$('#pdvCart [data-inc]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.inc);if(cart[i].qty<cart[i].stock)cart[i].qty++;draw()});
-    $$('#pdvCart [data-dec]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.dec);if(cart[i].qty>1)cart[i].qty--;draw()});
+    $$('#pdvCart [data-inc]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.inc);const step=isFractionalUnit(productUnit(cart[i]))?0.1:1;if(cart[i].qty+step<=cart[i].stock+1e-9)cart[i].qty=Number((cart[i].qty+step).toFixed(3));draw()});
+    $$('#pdvCart [data-dec]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.dec);const step=isFractionalUnit(productUnit(cart[i]))?0.1:1;const min=isFractionalUnit(productUnit(cart[i]))?0.001:1;if(cart[i].qty-step>=min-1e-9)cart[i].qty=Number((cart[i].qty-step).toFixed(3));draw()});
+    $$('#pdvCart [data-cart-qty]').forEach(el=>el.onchange=()=>{
+      const i=Number(el.dataset.cartQty),item=cart[i],min=isFractionalUnit(productUnit(item))?0.001:1;
+      const q=Math.max(min,Number(el.value||min));
+      if(q>Number(item.stock||0)){toast('Quantidade maior que o estoque disponível.');el.value=item.qty;return}
+      item.qty=Number(q.toFixed(3));draw();
+    });
     $$('#pdvCart [data-price]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.price)].price=Math.max(0,Number(el.value||0));draw()});
     $$('#pdvCart [data-discount]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.discount)].discount=Math.max(0,Number(el.value||0));draw()});
     $$('.pdv-pay').forEach(b=>{b.classList.toggle('active',b.dataset.pay===payment);b.onclick=()=>{payment=b.dataset.pay;draw()}});
@@ -650,11 +672,11 @@ function renderVendas(){
   };
   const addProduct=()=>{
     const p=findProduct($('#productSearch').value);
-    const qty=Math.max(1,Number($('#quickQty').value||1));
+    const minQty=isFractionalUnit(productUnit(p))?0.001:1;const qty=Math.max(minQty,Number($('#quickQty').value||minQty));
     if(!p)return toast('Selecione um produto cadastrado.');
     const current=cart.find(x=>x.id===p.id),already=current?current.qty:0;
     if(already+qty>Number(p.stock||0))return toast('Quantidade maior que o estoque disponível.');
-    if(current)current.qty+=qty;else cart.push({...p,qty,discount:0});
+    if(current)current.qty=Number((current.qty+qty).toFixed(3));else cart.push({...p,qty:Number(qty.toFixed(3)),discount:0});
     $('#productSearch').value='';$('#quickQty').value=1;draw();
   };
   const recentRows=data.sales.slice().reverse().slice(0,6).map((s,i)=>`<tr><td>${esc(String(s.id).slice(-4))}</td><td>${esc(s.client||'Sem cliente')}</td><td>${s.items||0}</td><td>${money(s.total)}</td><td>${esc(salePaymentLabel(s))}</td><td><div class="sale-row-actions"><button class="icon-btn" data-print-sale="${s.id}" title="Imprimir comprovante">${ic('report')}</button><button class="icon-btn" data-edit-sale="${s.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-delete-sale="${s.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('');
@@ -663,7 +685,7 @@ function renderVendas(){
     <div class="pdv-toolbar-title"><div class="pdv-icon-title">${ic('cart')}</div><div><h2>Nova venda</h2><p>Selecione os produtos, confira os valores e finalize o atendimento.</p></div></div>
     <div class="pdv-product-line">
       <label class="pdv-product-field"><span>Produto</span><div class="pdv-search"><i>${ic('report')}</i><input id="productSearch" list="productList" placeholder="Buscar produto por nome ou código..."><datalist id="productList">${productOptions()}</datalist></div></label>
-      <label class="pdv-quick-qty"><span>Quantidade</span><input id="quickQty" type="number" min="1" value="1"></label>
+      <label class="pdv-quick-qty"><span>Quantidade</span><input id="quickQty" type="number" min="0.001" step="0.001" value="1"><small id="quickUnitHint" class="pdv-unit-hint">un</small></label>
       <button id="addProductBtn" class="pdv-launch-product">${ic('plus')}Lançar produto</button>
     </div>
     <div class="pdv-customer-row">
@@ -692,6 +714,9 @@ function renderVendas(){
     <div class="card pdv-recent"><div class="pdv-side-title small">${ic('report')} <h2>Últimas vendas</h2></div><div class="pdv-recent-wrap"><table><thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pgto.</th><th>Ações</th></tr></thead><tbody>${recentRows||`<tr><td colspan="6">Nenhuma venda ainda.</td></tr>`}</tbody></table></div></div>
   </aside></div>`;
   $('#addProductBtn').onclick=addProduct;
+  const syncQuickUnit=()=>{const p=findProduct($('#productSearch').value);if(!p)return;const u=productUnit(p);$('#quickUnitHint').textContent=u;$('#quickQty').step=unitStep(p);$('#quickQty').min=isFractionalUnit(u)?'0.001':'1';if(Number($('#quickQty').value)<=0)$('#quickQty').value=isFractionalUnit(u)?'0.5':'1';};
+  $('#productSearch').addEventListener('input',syncQuickUnit);
+  $('#productSearch').addEventListener('change',syncQuickUnit);
   $('#productSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addProduct()}});
   $('#clientSelect').onchange=e=>{selectedClient=e.target.value;draw()};
   $('#received').oninput=draw;
@@ -706,7 +731,7 @@ function renderVendas(){
     if(payment==='Fiado'&&!$('#fiadoDue').value)return toast('Informe o vencimento do fiado.');
     cart.forEach(x=>{const p=data.products.find(p=>p.id===x.id);if(p)p.stock-=x.qty});
     const payLabel=payment==='Cartão'?`Cartão - ${cardType}`:payment;
-    const sale={id:uid('VEN'),date:now(),client:selectedClient?clientName(selectedClient):'',clientId:selectedClient,items:cart.reduce((s,x)=>s+x.qty,0),total:grandTotal(),payment:payLabel,paymentType:payment,cardType:payment==='Cartão'?cardType:'',obs:$('#saleObs').value,seller:$('#seller').value,financialStatus:payment==='Fiado'?'Em aberto':'Recebida',receivedAmount:payment==='Fiado'?0:grandTotal(),lines:cart.map(x=>({productId:x.id,name:x.name,qty:x.qty,price:x.price,discount:x.discount||0,photo:x.photo||''}))};
+    const sale={id:uid('VEN'),date:now(),client:selectedClient?clientName(selectedClient):'',clientId:selectedClient,items:cart.reduce((s,x)=>s+x.qty,0),total:grandTotal(),payment:payLabel,paymentType:payment,cardType:payment==='Cartão'?cardType:'',obs:$('#saleObs').value,seller:$('#seller').value,financialStatus:payment==='Fiado'?'Em aberto':'Recebida',receivedAmount:payment==='Fiado'?0:grandTotal(),lines:cart.map(x=>({productId:x.id,name:x.name,qty:x.qty,unit:productUnit(x),price:x.price,discount:x.discount||0,photo:x.photo||''}))};
     data.sales.push(sale);
     sessionStorage.setItem('dchacara_last_sale_id',sale.id);
     if(payment==='Fiado'){
@@ -763,7 +788,7 @@ function renderEstoque(){
   </div>
   <div class="card stock-table-card">
     <div class="stock-table-head"><div><h2>Produtos (${filtered.length})</h2><p>Controle detalhado do estoque com busca, filtros e paginação.</p></div><button class="btn soft" id="exportStockBtn">${ic('download')}Exportar</button></div>
-    <div class="table-wrap stock-table-wrap"><table class="table stock-table"><thead><tr><th></th><th>Código</th><th>Produto</th><th>Categoria</th><th>Marca</th><th>Estoque Atual</th><th>Estoque Mínimo</th><th>Fornecedor</th><th>Custo Unit.</th><th>Preço Venda</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="table-wrap stock-table-wrap"><table class="table stock-table"><thead><tr><th></th><th>Código</th><th>Produto</th><th>Categoria</th><th>Marca</th><th>Unidade</th><th>Estoque Atual</th><th>Estoque Mínimo</th><th>Fornecedor</th><th>Custo Unit.</th><th>Preço Venda</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="stock-pagination"><span>Exibindo ${filtered.length?start+1:0} a ${Math.min(start+perPage,filtered.length)} de ${filtered.length} produto(s)</span><div class="stock-page-buttons">${pageButtons}</div></div>
   </div>`;
 
@@ -884,8 +909,8 @@ function renderEntradas(){
       <div class="entry-draft-box">
         <div class="entry-draft-head"><h3>Itens da Entrada</h3></div>
         <div class="entry-items-grid">
-          <label class="full"><span>Produto *</span><select id="entryProduct"><option value="">Selecione o produto</option>${data.products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
-          <label><span>Quantidade *</span><input id="entryQty" type="number" min="1" value="1"></label>
+          <label class="full"><span>Produto *</span><select id="entryProduct"><option value="">Selecione o produto</option>${data.products.map(p=>`<option value="${p.id}">${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select></label>
+          <label><span>Quantidade *</span><input id="entryQty" type="number" min="0.001" step="0.001" value="1"></label>
           <label><span>Custo Unitário (R$) *</span><input id="entryCost" type="number" min="0" step="0.01" value="0"></label>
           <div class="entry-add-btn-wrap"><button class="btn soft entry-add-btn" id="addEntryItemBtn">${ic('plus')}Adicionar Produto</button></div>
         </div>
