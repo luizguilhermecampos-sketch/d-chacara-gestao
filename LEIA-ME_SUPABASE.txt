@@ -1,0 +1,13 @@
+D CHÁCARA EMPÓRIO - VERSÃO SUPABASE
+
+1. No Supabase, abra SQL Editor.
+2. Execute todo o arquivo SUPABASE_EXECUTAR_ANTES.sql.
+3. Depois abra index.html via servidor/local host ou GitHub Pages.
+4. Login visível: Luiz.silva
+5. A senha é a cadastrada no Supabase Auth.
+
+Esta versão usa o Supabase Auth e uma base compartilhada na tabela app_state.
+Qualquer computador autenticado carrega a mesma base.
+O localStorage é mantido apenas como cache local de contingência.
+
+IMPORTANTE: a publishable key é pública e pode ficar no front-end. Nunca coloque secret/service_role key no site.

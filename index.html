@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#063826">
+  <title>D Chácara Empório | Login</title>
+  <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+  <div class="login-page">
+    <section class="login-visual" aria-label="D Chácara Empório - AgroGestão"></section>
+
+    <section class="login-side">
+      <div class="login-card">
+        <div class="login-topline">
+          <span>Não tem uma conta?</span>
+          <button class="team-btn" type="button" id="teamBtn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+            Fale com nossa equipe
+          </button>
+        </div>
+
+        <div class="login-brand">
+          <div class="login-logo-mark">
+            <span class="logo-d">D</span>
+            <span class="logo-leaf"></span>
+          </div>
+          <div class="login-brand-copy">
+            <strong>D Chácara</strong>
+            <small>EMPÓRIO</small>
+          </div>
+        </div>
+        <div class="product-name">AgroGestão D Chácara</div>
+
+        <div class="login-copy">
+          <h1>Acesse sua conta</h1>
+          <p>Continue gerenciando seu negócio no campo<br>com mais praticidade e segurança.</p>
+        </div>
+
+        <form id="loginForm" novalidate autocomplete="off">
+          <label class="field">
+            <span>Login</span>
+            <div class="field-control">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+              <input id="login" name="dchacara_usuario" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Digite seu nome">
+            </div>
+          </label>
+
+          <label class="field">
+            <span>Senha</span>
+            <div class="field-control">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              <input id="password" name="dchacara_chave" type="password" autocomplete="new-password" autocapitalize="none" spellcheck="false" placeholder="Digite sua senha">
+              <button class="eye-btn" type="button" id="showPass" aria-label="Mostrar senha">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+              </button>
+            </div>
+          </label>
+
+          <div class="login-options">
+            <label class="remember">
+              <input id="remember" type="checkbox">
+              <span class="checkmark"></span>
+              Lembrar-me neste dispositivo
+            </label>
+            <button class="forgot" type="button" id="forgotBtn">Esqueci minha senha</button>
+          </div>
+
+          <button class="login-submit" type="submit">
+            <span>Entrar</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+          </button>
+        </form>
+
+        <div class="login-divider"><span>ou</span></div>
+
+        <div class="login-secondary-actions">
+          <button type="button" id="panelBtn" class="secondary-card">
+            <span class="secondary-icon bars">
+              <i></i><i></i><i></i>
+            </span>
+            <span><strong>Acessar Painel</strong><small>Ir direto para o painel principal</small></span>
+          </button>
+
+          <button type="button" id="codeBtn" class="secondary-card">
+            <span class="secondary-icon qr">
+              <i></i><i></i><i></i><i></i>
+            </span>
+            <span><strong>Entrar com código</strong><small>Acesso rápido via código</small></span>
+          </button>
+        </div>
+
+        <div class="security-strip">
+          <div class="shield">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>
+          </div>
+          <div class="security-copy">
+            <strong>Seus dados estão protegidos</strong>
+            <small>Utilizamos processos seguros para garantir a sua privacidade.</small>
+          </div>
+          <div class="security-brand">
+            <span class="mini-leaf"></span>
+            <small>O agro<br>mais forte<br>com pessoas<br>como você.</small>
+          </div>
+        </div>
+
+        <div id="loginMsg" class="login-msg" role="alert"></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/login.js"></script>
+</body>
+</html>
