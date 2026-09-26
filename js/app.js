@@ -640,7 +640,7 @@ function renderVendas(){
   const grandTotal=()=>Math.max(0,subtotal()-discounts());
   const salesToday=()=>data.sales.filter(s=>(s.date||'').slice(0,10)===today());
   const draw=()=>{
-    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.stock)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.stock,productUnit(x))}</td><td><div class="qty"><button data-dec="${i}">−</button><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(productUnit(x))?'0.001':'1'}" step="${unitStep(x)}" value="${x.qty}"><span class="qty-unit">${esc(productUnit(x))}</span><button data-inc="${i}">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><input class="mini-input" data-discount="${i}" type="number" min="0" step="0.01" value="${x.discount||0}"></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
+    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.stock)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.stock,productUnit(x))}</td><td><div class="qty kg-qty"><button data-dec="${i}" title="Diminuir">−</button><div class="qty-input-wrap"><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(productUnit(x))?'0.001':'1'}" step="${unitStep(x)}" value="${x.qty}"><span class="qty-unit">${esc(productUnit(x))}</span></div><button data-inc="${i}" title="Aumentar">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><input class="mini-input" data-discount="${i}" type="number" min="0" step="0.01" value="${x.discount||0}"></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
     $('#pdvCart').innerHTML=cart.length?`<div class="table-wrap sales-table-wrap"><table class="table sales-table"><thead><tr><th>Produto</th><th>Estoque</th><th>Quantidade</th><th>Valor unit.</th><th>Desconto</th><th>Total</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="pdv-empty-cart">${ic('cart')}<strong>Carrinho vazio</strong><small>Pesquise um produto acima e clique em <b>Lançar produto</b>.</small></div>`;
     const itemCount=cart.reduce((s,x)=>s+Number(x.qty||0),0);
     $('#pdvItemCount').textContent=`${cart.length} produto${cart.length===1?'':'s'}`;
@@ -684,8 +684,8 @@ function renderVendas(){
   <div class="card pdv-toolbar-card">
     <div class="pdv-toolbar-title"><div class="pdv-icon-title">${ic('cart')}</div><div><h2>Nova venda</h2><p>Selecione os produtos, confira os valores e finalize o atendimento.</p></div></div>
     <div class="pdv-product-line">
-      <label class="pdv-product-field"><span>Produto</span><div class="pdv-search"><i>${ic('report')}</i><input id="productSearch" list="productList" placeholder="Buscar produto por nome ou código..."><datalist id="productList">${productOptions()}</datalist></div></label>
-      <label class="pdv-quick-qty"><span>Quantidade</span><input id="quickQty" type="number" min="0.001" step="0.001" value="1"><small id="quickUnitHint" class="pdv-unit-hint">un</small></label>
+      <label class="pdv-product-field"><span>Produto</span><div class="pdv-search pdv-search-custom"><i>${ic('report')}</i><input id="productSearch" autocomplete="off" placeholder="Buscar por nome ou código do produto..."></div><div id="productSuggestions" class="product-suggestions" hidden></div></label>
+      <label class="pdv-quick-qty"><span>Quantidade</span><div class="pdv-qty-control"><input id="quickQty" type="number" min="0.001" step="0.001" value="1"><strong id="quickUnitHint" class="pdv-unit-hint">un</strong></div></label>
       <button id="addProductBtn" class="pdv-launch-product">${ic('plus')}Lançar produto</button>
     </div>
     <div class="pdv-customer-row">
@@ -715,9 +715,43 @@ function renderVendas(){
   </aside></div>`;
   $('#addProductBtn').onclick=addProduct;
   const syncQuickUnit=()=>{const p=findProduct($('#productSearch').value);if(!p)return;const u=productUnit(p);$('#quickUnitHint').textContent=u;$('#quickQty').step=unitStep(p);$('#quickQty').min=isFractionalUnit(u)?'0.001':'1';if(Number($('#quickQty').value)<=0)$('#quickQty').value=isFractionalUnit(u)?'0.5':'1';};
-  $('#productSearch').addEventListener('input',syncQuickUnit);
-  $('#productSearch').addEventListener('change',syncQuickUnit);
-  $('#productSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addProduct()}});
+
+  const suggestionBox=$('#productSuggestions');
+  const renderProductSuggestions=()=>{
+    const term=$('#productSearch').value.trim().toLowerCase();
+    const matches=productsAvailable().filter(p=>{
+      if(!term)return true;
+      return String(p.name||'').toLowerCase().includes(term)||
+             String(p.code||'').toLowerCase().includes(term)||
+             String(p.brand||'').toLowerCase().includes(term);
+    }).slice(0,7);
+
+    suggestionBox.innerHTML=matches.length?matches.map(p=>`
+      <button type="button" class="product-suggestion" data-product-pick="${p.id}">
+        ${p.photo?`<img src="${p.photo}" alt="">`:`<span class="product-suggestion-icon">${ic('box')}</span>`}
+        <span class="product-suggestion-main"><strong>${esc(p.name)}</strong><small>${esc(p.code||p.id)}${p.brand?' • '+esc(p.brand):''}</small></span>
+        <span class="product-suggestion-meta"><b>${money(p.price)} / ${esc(productUnit(p))}</b><small>Estoque: ${esc(qtyLabel(p.stock,productUnit(p)))}</small></span>
+      </button>`).join(''):'<div class="product-suggestion-empty">Nenhum produto encontrado.</div>';
+    suggestionBox.hidden=false;
+
+    $$('[data-product-pick]').forEach(btn=>btn.onmousedown=e=>{
+      e.preventDefault();
+      const p=data.products.find(x=>x.id===btn.dataset.productPick);
+      if(!p)return;
+      $('#productSearch').value=p.name;
+      const u=productUnit(p);
+      $('#quickUnitHint').textContent=u;
+      $('#quickQty').step=unitStep(p);
+      $('#quickQty').min=isFractionalUnit(u)?'0.001':'1';
+      $('#quickQty').value=isFractionalUnit(u)?'0.5':'1';
+      suggestionBox.hidden=true;
+    });
+  };
+
+  $('#productSearch').addEventListener('focus',renderProductSuggestions);
+  $('#productSearch').addEventListener('input',()=>{syncQuickUnit();renderProductSuggestions()});
+  $('#productSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();suggestionBox.hidden=true;addProduct()}if(e.key==='Escape')suggestionBox.hidden=true;});
+  $('#productSearch').addEventListener('blur',()=>setTimeout(()=>suggestionBox.hidden=true,120));
   $('#clientSelect').onchange=e=>{selectedClient=e.target.value;draw()};
   $('#received').oninput=draw;
   $('#cardType').onchange=e=>{cardType=e.target.value};
@@ -769,7 +803,7 @@ function renderEstoque(){
   const start=(state.page-1)*perPage;
   const view=filtered.slice(start,start+perPage);
   const pageButtons=Array.from({length:pages},(_,i)=>i+1).map(n=>`<button class="${n===state.page?'active':''}" data-stock-page="${n}">${n}</button>`).join('');
-  const rows=view.map((p,idx)=>`<tr><td><div class="stock-check"></div></td><td>${esc(p.code||p.id)}</td><td><div class="stock-product-cell">${p.photo?`<img class="stock-thumb" src="${p.photo}" alt="${esc(p.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(p.name)}</strong><small>${esc(p.description||p.brand||'Produto cadastrado')}</small></div></div></td><td><span class="stock-cat-badge ${inventoryTone(p.category)}">${esc(p.category||'Sem categoria')}</span></td><td>${esc(p.brand||'-')}</td><td><span class="${Number(p.stock||0)<=Number(p.min||0)?'stock-low':'stock-ok'}">${Number(p.stock||0)} un</span></td><td class="txt-danger">${Number(p.min||0)}</td><td>${esc(p.supplier||'-')}</td><td>${money(p.cost)}</td><td>${money(p.price)}</td><td><span class="stock-status ${inventoryStatus(p)==='Baixo Estoque'?'low':'normal'}">${inventoryStatus(p)}</span></td><td><div class="stock-actions"><button class="icon-btn" data-adjust-product="${p.id}" title="Ajuste de estoque">${ic('tray')}</button><button class="icon-btn" data-edit-product="${p.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-product="${p.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="12"><div class="empty stock-empty-inline">Nenhum produto encontrado para os filtros selecionados.</div></td></tr>`;
+  const rows=view.map((p,idx)=>`<tr><td><div class="stock-check"></div></td><td>${esc(p.code||p.id)}</td><td><div class="stock-product-cell">${p.photo?`<img class="stock-thumb" src="${p.photo}" alt="${esc(p.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(p.name)}</strong><small>${esc(p.description||p.brand||'Produto cadastrado')}</small></div></div></td><td><span class="stock-cat-badge ${inventoryTone(p.category)}">${esc(p.category||'Sem categoria')}</span></td><td>${esc(p.brand||'-')}</td><td class="stock-unit-cell"><span class="stock-unit-badge">${esc(productUnit(p))}</span></td><td class="stock-num-cell"><span class="${Number(p.stock||0)<=Number(p.min||0)?'stock-low':'stock-ok'}">${Number(p.stock||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</span></td><td class="stock-num-cell"><span class="stock-min-value">${Number(p.min||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</span></td><td>${esc(p.supplier||'-')}</td><td class="stock-money-cell">${money(p.cost)}</td><td class="stock-money-cell">${money(p.price)}</td><td><span class="stock-status ${inventoryStatus(p)==='Baixo Estoque'?'low':'normal'}">${inventoryStatus(p)}</span></td><td><div class="stock-actions"><button class="icon-btn" data-adjust-product="${p.id}" title="Ajuste de estoque">${ic('tray')}</button><button class="icon-btn" data-edit-product="${p.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-product="${p.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="13"><div class="empty stock-empty-inline">Nenhum produto encontrado para os filtros selecionados.</div></td></tr>`;
   $('#page').innerHTML=`
   <div class="grid stock-kpis">
     <article class="card hover stock-stat-card"><div class="stock-stat-icon green">${ic('box')}</div><div class="stock-stat-copy"><small>Itens Cadastrados</small><strong>${data.products.length}</strong><div class="trend">${data.products.length?'+ cadastro(s) disponíveis':'Sem produtos cadastrados'}</div></div><div class="stock-stat-bars"></div></article>
@@ -788,7 +822,7 @@ function renderEstoque(){
   </div>
   <div class="card stock-table-card">
     <div class="stock-table-head"><div><h2>Produtos (${filtered.length})</h2><p>Controle detalhado do estoque com busca, filtros e paginação.</p></div><button class="btn soft" id="exportStockBtn">${ic('download')}Exportar</button></div>
-    <div class="table-wrap stock-table-wrap"><table class="table stock-table"><thead><tr><th></th><th>Código</th><th>Produto</th><th>Categoria</th><th>Marca</th><th>Unidade</th><th>Estoque Atual</th><th>Estoque Mínimo</th><th>Fornecedor</th><th>Custo Unit.</th><th>Preço Venda</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="table-wrap stock-table-wrap"><table class="table stock-table"><thead><tr><th></th><th>Código</th><th>Produto</th><th>Categoria</th><th>Marca</th><th class="th-center">Unid.</th><th class="th-number">Estoque Atual</th><th class="th-number">Estoque Mínimo</th><th>Fornecedor</th><th>Custo Unit.</th><th>Preço Venda</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="stock-pagination"><span>Exibindo ${filtered.length?start+1:0} a ${Math.min(start+perPage,filtered.length)} de ${filtered.length} produto(s)</span><div class="stock-page-buttons">${pageButtons}</div></div>
   </div>`;
 
