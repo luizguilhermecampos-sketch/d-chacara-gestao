@@ -46,7 +46,7 @@ await loadCloudState();
 if(!Array.isArray(data.expenseCategories)||!data.expenseCategories.length){data.expenseCategories=[...blank.expenseCategories]}
 data.expenseCategories=[...new Set([...(data.expenseCategories||[]), ...(data.expenses||[]).map(e=>e.category).filter(Boolean)])];
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`};
 const now=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
 const uid=p=>`${p}-${Date.now()}-${Math.floor(Math.random()*999)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -63,6 +63,43 @@ $('#bell').onclick=()=>$('#notif').classList.toggle('show');
 $('[data-close-notif]').onclick=()=>$('#notif').classList.remove('show');
 $('#modalClose').onclick=closeModal;
 $('#modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
+
+$('#page').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-edit-product],[data-edit-entry],[data-edit-expense],[data-edit-client],[data-edit-debt],[data-edit-sale]');
+  if(!btn)return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  if(btn.hasAttribute('data-edit-product')){
+    const item=data.products.find(x=>String(x.id)===String(btn.dataset.editProduct));
+    if(!item)return toast('Produto não encontrado.');
+    return productForm(item);
+  }
+  if(btn.hasAttribute('data-edit-entry')){
+    const item=data.entries.find(x=>String(x.id)===String(btn.dataset.editEntry));
+    if(!item)return toast('Entrada não encontrada.');
+    return entryForm(item);
+  }
+  if(btn.hasAttribute('data-edit-expense')){
+    const item=data.expenses.find(x=>String(x.id)===String(btn.dataset.editExpense));
+    if(!item)return toast('Despesa não encontrada.');
+    return expenseForm(item);
+  }
+  if(btn.hasAttribute('data-edit-client')){
+    const item=data.clients.find(x=>String(x.id)===String(btn.dataset.editClient));
+    if(!item)return toast('Cliente não encontrado.');
+    return clientForm(item);
+  }
+  if(btn.hasAttribute('data-edit-debt')){
+    const item=data.debts.find(x=>String(x.id)===String(btn.dataset.editDebt));
+    if(!item)return toast('Fiado não encontrado.');
+    return debtForm(item);
+  }
+  if(btn.hasAttribute('data-edit-sale')){
+    return editSaleModal(btn.dataset.editSale);
+  }
+},true);
+
 const photoInput=$('#profilePhotoInput');
 $('.avatar-photo').onclick=(e)=>{if(e.target.tagName!=='INPUT')photoInput.click()};
 photoInput.onchange=(e)=>{const file=e.target.files?.[0];if(!file)return;const r=new FileReader();r.onload=()=>{setProfilePhoto(r.result);location.reload()};r.readAsDataURL(file)};
@@ -98,6 +135,7 @@ function normalizeInventoryData(){
     brand:p.brand||'',
     category:(p.category||'Sem categoria').trim(),
     supplier:p.supplier||'',
+    unit:String(p.unit||'un'),
     stock:Number(p.stock||0),
     min:Number(p.min||0),
     cost:Number(p.cost||0),
@@ -181,7 +219,16 @@ function productForm(product=null){
     $('#pStock').step=step;$('#pMin').step=step;
   });
   $('#cancelProduct').onclick=closeModal;
-  $('#manageCategoryFromProduct').onclick=(e)=>{e.preventDefault(); manageCategoriesModal()};
+  $('#manageCategoryFromProduct').onclick=(e)=>{
+    e.preventDefault();
+    const value=prompt('Digite a categoria do produto:',$('#pCategory').value||'');
+    if(value===null)return;
+    const category=value.trim();
+    if(!category)return toast('Digite uma categoria válida.');
+    if(!data.categories.some(c=>String(c).toLowerCase()===category.toLowerCase()))data.categories.push(category);
+    $('#pCategory').value=category;
+    toast('Categoria selecionada.');
+  };
   $('#saveProduct').onclick=()=>{
     const name=$('#pName').value.trim();
     const category=($('#pCategory').value.trim()||'Sem categoria');
@@ -193,6 +240,7 @@ function productForm(product=null){
     if(!product)data.products.push(obj);
     save();
     closeModal();
+    toast(product?'Produto atualizado com sucesso.':'Produto cadastrado com sucesso.');
     if(page==='estoque')renderEstoque();
     if(page==='vendas')renderVendas();
   };
@@ -363,7 +411,7 @@ function editSaleModal(saleId){
     if(paymentType==='Fiado'&&!clientId)return toast('Venda fiada precisa de cliente cadastrado.');
     const newLines=(sale.lines||[]).map((line,i)=>({
       ...line,
-      qty:Math.max(1,Number($(`[data-edit-sale-qty="${i}"]`).value||1)),
+      qty:(()=>{const u=line.unit||productUnit(data.products.find(p=>p.id===line.productId));const min=isFractionalUnit(u)?0.001:1;return Number(Math.max(min,Number($(`[data-edit-sale-qty="${i}"]`).value||min)).toFixed(3))})(),
       price:Math.max(0,Number($(`[data-edit-sale-price="${i}"]`).value||0)),
       discount:Math.max(0,Number($(`[data-edit-sale-discount="${i}"]`).value||0))
     }));
@@ -856,24 +904,86 @@ const entryPendingCount=()=> (data.entries||[]).filter(e=>String(e.status||'')!=
 function entryCategory(entry){return data.products.find(p=>p.id===entry.productId)?.category||'Outros'}
 function entryForm(e=null){
   if(!data.products.length)return toast('Cadastre um produto primeiro.');
-  modal(`<h3>${e?'Editar':'Nova'} entrada</h3><p class="modal-subtitle">Atualize fornecedor, nota, produto, quantidade e custo da mercadoria.</p><div class="form-grid"><label class="full">Fornecedor<input id="eSup" list="entrySupplierList" value="${esc(e?.supplier||'')}" placeholder="Nome do fornecedor"><datalist id="entrySupplierList">${entrySuppliers().map(s=>`<option value="${esc(s)}"></option>`).join('')}</datalist></label><label>Número da nota<input id="eNf" value="${esc(e?.nf||'')}" placeholder="Ex.: 0001257"></label><label>Data<input id="eDate" type="date" value="${e?.date||today()}"></label><label>Status<select id="eStatus"><option ${e?.status==='Recebida'?'selected':''}>Recebida</option><option ${e?.status==='Pendente'?'selected':''}>Pendente</option><option ${e?.status==='Parcial'?'selected':''}>Parcial</option></select></label><label class="full">Produto<select id="eProd">${data.products.map(p=>`<option value="${p.id}" ${p.id===e?.productId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label><label>Quantidade<input id="eQty" type="number" min="1" value="${e?.qty??1}"></label><label>Custo unitário<input id="eCost" type="number" step="0.01" min="0" value="${e?.cost??0}"></label><label class="full">Observações<input id="eObs" value="${esc(e?.obs||'')}" placeholder="Condição de pagamento, observações internas..."></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelEntry">Cancelar</button><button class="btn primary" id="saveEntry">Salvar entrada</button></div>`);
+  const initialProduct=data.products.find(p=>p.id===e?.productId)||data.products[0];
+  const initialUnit=productUnit(initialProduct);
+  modal(`<h3>${e?'Editar':'Nova'} entrada</h3><p class="modal-subtitle">Atualize fornecedor, nota, produto, quantidade e custo da mercadoria.</p><div class="form-grid">
+    <label class="full">Fornecedor<input id="eSup" list="entrySupplierList" value="${esc(e?.supplier||'')}" placeholder="Nome do fornecedor"><datalist id="entrySupplierList">${entrySuppliers().map(s=>`<option value="${esc(s)}"></option>`).join('')}</datalist></label>
+    <label>Número da nota<input id="eNf" value="${esc(e?.nf||'')}" placeholder="Ex.: 0001257"></label>
+    <label>Data<input id="eDate" type="date" value="${e?.date||today()}"></label>
+    <label>Status<select id="eStatus"><option ${e?.status==='Recebida'?'selected':''}>Recebida</option><option ${e?.status==='Pendente'?'selected':''}>Pendente</option><option ${e?.status==='Parcial'?'selected':''}>Parcial</option></select></label>
+    <label class="full">Produto<select id="eProd">${data.products.map(p=>`<option value="${p.id}" ${p.id===e?.productId?'selected':''}>${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select></label>
+    <label>Quantidade<div class="edit-unit-control"><input id="eQty" type="number" min="${isFractionalUnit(initialUnit)?'0.001':'1'}" step="${isFractionalUnit(initialUnit)?'0.001':'1'}" value="${e?.qty??1}"><span id="eUnit">${esc(initialUnit)}</span></div></label>
+    <label>Custo unitário<input id="eCost" type="number" step="0.01" min="0" value="${e?.cost??0}"></label>
+    <label class="full">Observações<input id="eObs" value="${esc(e?.obs||'')}" placeholder="Condição de pagamento, observações internas..."></label>
+  </div><div class="stock-modal-actions"><button class="btn outline" id="cancelEntry">Cancelar</button><button class="btn primary" id="saveEntry">Salvar entrada</button></div>`);
+  const syncEntryUnit=()=>{
+    const p=data.products.find(x=>x.id===$('#eProd').value);
+    if(!p)return;
+    const u=productUnit(p), fractional=isFractionalUnit(u);
+    $('#eQty').min=fractional?'0.001':'1';
+    $('#eQty').step=fractional?'0.001':'1';
+    $('#eUnit').textContent=u;
+  };
+  $('#eProd').onchange=syncEntryUnit;
   $('#cancelEntry').onclick=closeModal;
   $('#saveEntry').onclick=()=>{
-    const p=data.products.find(x=>x.id===$('#eProd').value),q=Math.max(0,Number($('#eQty').value||0)),cost=Math.max(0,Number($('#eCost').value||0));
+    const p=data.products.find(x=>x.id===$('#eProd').value);
+    if(!p)return toast('Selecione um produto.');
+    const min=isFractionalUnit(productUnit(p))?0.001:1;
+    const q=Math.max(min,Number($('#eQty').value||min));
+    const cost=Math.max(0,Number($('#eCost').value||0));
     const supplier=$('#eSup').value.trim()||'-';
     const status=$('#eStatus').value;
-    if(!p||q<=0)return toast('Preencha produto e quantidade.');
+    if(q<=0)return toast('Informe uma quantidade válida.');
+
     if(e){
       const oldProduct=data.products.find(x=>x.id===e.productId);
-      if(e.status==='Recebida'&&oldProduct)oldProduct.stock=Math.max(0,Number(oldProduct.stock||0)-Number(e.qty||0));
-      if(status==='Recebida')p.stock=Number(p.stock||0)+q;
-      Object.assign(e,{nf:$('#eNf').value.trim()||'-',date:$('#eDate').value,supplier,product:p.name,productId:p.id,qty:q,cost,status,obs:$('#eObs').value.trim()});
+      const oldQty=Number(e.qty||0);
+
+      // desfaz o efeito antigo no estoque
+      if(e.status==='Recebida'&&oldProduct){
+        oldProduct.stock=Math.max(0,Number(oldProduct.stock||0)-oldQty);
+      }
+
+      // aplica o novo efeito
+      if(status==='Recebida'){
+        p.stock=Number(p.stock||0)+q;
+      }
+
+      Object.assign(e,{
+        nf:$('#eNf').value.trim()||'-',
+        date:$('#eDate').value,
+        supplier,
+        product:p.name,
+        productId:p.id,
+        unit:productUnit(p),
+        qty:Number(q.toFixed(3)),
+        cost,
+        status,
+        obs:$('#eObs').value.trim()
+      });
     }else{
       if(status==='Recebida')p.stock=Number(p.stock||0)+q;
-      data.entries.push({id:uid('ENT'),nf:$('#eNf').value.trim()||'-',date:$('#eDate').value,supplier,product:p.name,productId:p.id,qty:q,cost,status,obs:$('#eObs').value.trim()});
+      data.entries.push({
+        id:uid('ENT'),
+        nf:$('#eNf').value.trim()||'-',
+        date:$('#eDate').value,
+        supplier,
+        product:p.name,
+        productId:p.id,
+        unit:productUnit(p),
+        qty:Number(q.toFixed(3)),
+        cost,
+        status,
+        obs:$('#eObs').value.trim()
+      });
     }
-    save();closeModal();renderEntradas();
-  }
+
+    save();
+    closeModal();
+    toast(e?'Entrada atualizada com sucesso.':'Entrada cadastrada com sucesso.');
+    renderEntradas();
+  };
 }
 function receiveEntry(entry){
   if(!entry||entry.status==='Recebida')return;
@@ -886,7 +996,8 @@ function receiveEntry(entry){
 
 function expenseForm(e=null){
   const categories=(data.expenseCategories&&data.expenseCategories.length?data.expenseCategories:[...blank.expenseCategories]).slice().sort((a,b)=>a.localeCompare(b,'pt-BR'));
-  modal(`<h3>${e?'Editar':'Nova'} despesa</h3><div class="form-grid"><label>Data<input id="xDate" type="date" value="${e?.date||today()}"></label><label>Tipo<select id="xType"><option ${e?.type==='Fixa'?'selected':''}>Fixa</option><option ${e?.type!=='Fixa'?'selected':''}>Variável</option></select></label><label>Categoria<select id="xCat">${categories.map(x=>`<option ${x===e?.category?'selected':''}>${x}</option>`).join('')}</select></label><label>Status<select id="xStatus"><option ${e?.status==='Paga'?'selected':''}>Paga</option><option ${e?.status==='Pendente'?'selected':''}>Pendente</option><option ${e?.status==='Vencida'?'selected':''}>Vencida</option></select></label><label class="full">Descrição<input id="xDesc" value="${esc(e?.description||'')}" placeholder="Ex.: Conta de energia elétrica - Maio/2025"></label><label>Fornecedor<input id="xSup" value="${esc(e?.supplier||'')}" placeholder="Fornecedor ou favorecido"></label><label>Pagamento<select id="xPay">${['PIX','Transferência','Cartão de Crédito','Dinheiro','Boleto'].map(x=>`<option ${x===e?.payment?'selected':''}>${x}</option>`).join('')}</select></label><label class="full">Valor<input id="xValue" type="number" step="0.01" value="${e?.value??0}"></label></div><button class="btn primary" id="saveExpense">Salvar despesa</button>`);
+  modal(`<h3>${e?'Editar':'Nova'} despesa</h3><div class="form-grid"><label>Data<input id="xDate" type="date" value="${e?.date||today()}"></label><label>Tipo<select id="xType"><option ${e?.type==='Fixa'?'selected':''}>Fixa</option><option ${e?.type!=='Fixa'?'selected':''}>Variável</option></select></label><label>Categoria<select id="xCat">${categories.map(x=>`<option ${x===e?.category?'selected':''}>${x}</option>`).join('')}</select></label><label>Status<select id="xStatus"><option ${e?.status==='Paga'?'selected':''}>Paga</option><option ${e?.status==='Pendente'?'selected':''}>Pendente</option><option ${e?.status==='Vencida'?'selected':''}>Vencida</option></select></label><label class="full">Descrição<input id="xDesc" value="${esc(e?.description||'')}" placeholder="Ex.: Conta de energia elétrica - Maio/2025"></label><label>Fornecedor<input id="xSup" value="${esc(e?.supplier||'')}" placeholder="Fornecedor ou favorecido"></label><label>Pagamento<select id="xPay">${['PIX','Transferência','Cartão de Crédito','Dinheiro','Boleto'].map(x=>`<option ${x===e?.payment?'selected':''}>${x}</option>`).join('')}</select></label><label class="full">Valor<input id="xValue" type="number" step="0.01" value="${e?.value??0}"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelExpense">Cancelar</button><button class="btn primary" id="saveExpense">Salvar despesa</button></div>`);
+  $('#cancelExpense').onclick=closeModal;
   $('#saveExpense').onclick=()=>{
     const v=+$('#xValue').value||0;
     if(v<=0)return toast('Informe o valor.');
@@ -894,7 +1005,7 @@ function expenseForm(e=null){
     Object.assign(obj,{date:$('#xDate').value,type:$('#xType').value,category:$('#xCat').value,description:$('#xDesc').value.trim(),supplier:$('#xSup').value.trim(),payment:$('#xPay').value,value:v,status:$('#xStatus').value});
     if(!e)data.expenses.push(obj);
     if(obj.category&&!data.expenseCategories.includes(obj.category))data.expenseCategories.push(obj.category);
-    save();closeModal();
+    save();closeModal();toast(e?'Despesa atualizada com sucesso.':'Despesa cadastrada com sucesso.');
     if(page==='despesas')renderDespesas(); else location.reload();
   }
 }
@@ -919,7 +1030,7 @@ function renderEntradas(){
   const catColors=['#0b7b49','#4ea969','#a1cc6c','#efae35','#b97a44','#c7ceca'];
   let acc=0;
   const conic=categoryEntries.length?categoryEntries.map((x,i)=>{const start=acc;acc+=x[1]/catTotal*100;return `${catColors[i%catColors.length]} ${start}% ${acc}%`}).join(', '):'#e9efeb 0 100%';
-  const draftRows=state.items.map((item,i)=>`<tr><td><div class="entry-draft-product">${item.photo?`<img src="${item.photo}" class="stock-thumb" alt="${esc(item.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(item.name)}</strong><small>${esc(item.code||item.id)}</small></div></div></td><td>${item.qty}</td><td>${money(item.cost)}</td><td><strong>${money(item.qty*item.cost)}</strong></td><td><button class="icon-btn danger" data-draft-remove="${i}">${ic('trash')}</button></td></tr>`).join('')||`<tr><td colspan="5"><div class="small-empty">Nenhum produto adicionado à entrada.</div></td></tr>`;
+  const draftRows=state.items.map((item,i)=>`<tr><td><div class="entry-draft-product">${item.photo?`<img src="${item.photo}" class="stock-thumb" alt="${esc(item.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(item.name)}</strong><small>${esc(item.code||item.id)}</small></div></div></td><td>${qtyLabel(item.qty,item.unit||'un')}</td><td>${money(item.cost)}</td><td><strong>${money(item.qty*item.cost)}</strong></td><td><button class="icon-btn danger" data-draft-remove="${i}">${ic('trash')}</button></td></tr>`).join('')||`<tr><td colspan="5"><div class="small-empty">Nenhum produto adicionado à entrada.</div></td></tr>`;
   $('#page').innerHTML=`
   <div class="grid entry-kpis">
     <article class="card hover stock-stat-card"><div class="stock-stat-icon green">${ic('tray')}</div><div class="stock-stat-copy"><small>Entradas do Mês</small><strong>${money(totalValue)}</strong><div class="trend">Mercadorias registradas no período</div></div><div class="stock-stat-bars"></div></article>
@@ -967,7 +1078,7 @@ function renderEntradas(){
     state.supplier=$('#entrySupplier').value.trim();state.nf=$('#entryNf').value.trim();state.date=$('#entryDate').value;state.obs=$('#entryObs').value.trim();
     if(!p||qty<=0)return toast('Selecione o produto e informe a quantidade.');
     const found=state.items.find(x=>x.id===p.id&&x.cost===cost);
-    if(found)found.qty+=qty; else state.items.push({id:p.id,code:p.code,name:p.name,photo:p.photo||'',qty,cost});
+    if(found)found.qty+=qty; else state.items.push({id:p.id,code:p.code,name:p.name,photo:p.photo||'',unit:productUnit(p),qty:Number(qty.toFixed(3)),cost});
     renderEntradas();
   };
   $$('[data-draft-remove]').forEach(btn=>btn.onclick=()=>{state.items.splice(Number(btn.dataset.draftRemove),1);renderEntradas()});
@@ -978,7 +1089,7 @@ function renderEntradas(){
     state.items.forEach(item=>{
       const p=data.products.find(x=>x.id===item.id);
       if(status==='Recebida'&&p)p.stock=Number(p.stock||0)+Number(item.qty||0);
-      data.entries.push({id:uid('ENT'),nf:state.nf,date:state.date,supplier:state.supplier,product:item.name,productId:item.id,qty:Number(item.qty||0),cost:Number(item.cost||0),status,obs:state.obs});
+      data.entries.push({id:uid('ENT'),nf:state.nf,date:state.date,supplier:state.supplier,product:item.name,productId:item.id,unit:item.unit||productUnit(p),qty:Number(item.qty||0),cost:Number(item.cost||0),status,obs:state.obs});
     });
     save();
     renderEntradas.state={supplier:'',nf:'',date:today(),obs:'',items:[]};
@@ -1141,26 +1252,27 @@ function clientForm(c=null){
     const obj=c||{id:uid('CLI'),createdAt:now()};
     Object.assign(obj,{name,phone:$('#cPhone').value.trim(),email:$('#cEmail').value.trim(),document:$('#cDoc').value.trim(),city:$('#cCity').value.trim(),obs:$('#cObs').value.trim()});
     if(!c)data.clients.push(obj);
-    save();closeModal();
+    save();closeModal();toast(c?'Cliente atualizado com sucesso.':'Cliente cadastrado com sucesso.');
     if(page==='clientes')renderClientes(); else if(page==='fiados')renderFiados();
   }
 }
 function debtForm(d=null,clientId=''){
   if(!data.clients.length)return toast('Cadastre um cliente primeiro.');
-  modal(`<h3>${d?'Editar':'Novo'} fiado</h3><p class="modal-subtitle">Escolha o cliente, informe o valor e defina o vencimento.</p><div class="form-grid"><label class="full">Cliente<select id="dClient">${data.clients.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(c=>`<option value="${c.id}" ${(c.id===(d?.clientId||clientId))?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label><label class="full">Descrição<input id="dDesc" value="${esc(d?.description||'')}" placeholder="Ex.: Compra de ração, sementes, medicamento..."></label><label>Valor<input id="dValue" type="number" step="0.01" min="0.01" value="${d?.value??0}"></label><label>Vencimento<input id="dDue" type="date" value="${d?.due||today()}"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelDebt">Cancelar</button><button class="btn primary" id="saveDebt">Salvar fiado</button></div>`);
+  const saleLinked=!!d?.saleId;
+  modal(`<h3>${d?'Editar':'Novo'} fiado</h3><p class="modal-subtitle">${saleLinked?'Fiado vinculado a uma venda: altere somente descrição e vencimento.':'Escolha o cliente, informe o valor e defina o vencimento.'}</p><div class="form-grid"><label class="full">Cliente<select id="dClient" ${saleLinked?'disabled':''}>${data.clients.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(c=>`<option value="${c.id}" ${(c.id===(d?.clientId||clientId))?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label><label class="full">Descrição<input id="dDesc" value="${esc(d?.description||'')}" placeholder="Ex.: Compra de ração, sementes, medicamento..."></label><label>Valor<input id="dValue" type="number" step="0.01" min="0.01" value="${d?.value??0}" ${saleLinked?'disabled':''}></label><label>Vencimento<input id="dDue" type="date" value="${d?.due||today()}"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelDebt">Cancelar</button><button class="btn primary" id="saveDebt">Salvar fiado</button></div>`);
   $('#cancelDebt').onclick=closeModal;
   $('#saveDebt').onclick=()=>{
-    const v=+$('#dValue').value||0;
+    const v=saleLinked?Number(d.value||0):(+$('#dValue').value||0);
     if(v<=0)return toast('Informe o valor do fiado.');
     const obj=d||{id:uid('FIA'),balance:v,status:'Em aberto',createdAt:now()};
     const oldValue=Number(d?.value||v), oldBalance=Number(d?.balance||v);
-    Object.assign(obj,{clientId:$('#dClient').value,description:$('#dDesc').value.trim()||'Venda fiada',value:v,due:$('#dDue').value});
+    Object.assign(obj,{clientId:saleLinked?d.clientId:$('#dClient').value,description:$('#dDesc').value.trim()||'Venda fiada',value:v,due:$('#dDue').value});
     if(d){
       const paid=Math.max(0,oldValue-oldBalance);
       obj.balance=Math.max(0,v-paid);
       obj.status=obj.balance<=0?'Pago':'Em aberto';
     }else data.debts.push(obj);
-    save();closeModal();
+    save();closeModal();toast(d?'Fiado atualizado com sucesso.':'Fiado cadastrado com sucesso.');
     if(page==='fiados')renderFiados(); else if(page==='clientes')renderClientes();
   }
 }
@@ -1208,7 +1320,7 @@ function renderClientes(){
   $$('[data-client-page]').forEach(b=>b.onclick=()=>{state.page=+b.dataset.clientPage;renderClientes()});
   $$('[data-new-debt-client]').forEach(b=>b.onclick=()=>{sessionStorage.setItem('pdv_prefill_client',b.dataset.newDebtClient);location.href='vendas.html'});
   $$('[data-edit-client]').forEach(b=>b.onclick=()=>clientForm(data.clients.find(c=>c.id===b.dataset.editClient)));
-  $$('[data-del-client]').forEach(b=>b.onclick=()=>{const c=data.clients.find(x=>x.id===b.dataset.delClient);if(!c||!confirm(`Excluir ${c.name}?`))return;if(data.debts.some(d=>d.clientId===c.id))return toast('Cliente possui histórico de fiados e não pode ser excluído.');data.clients=data.clients.filter(x=>x!==c);save();renderClientes()});
+  $$('[data-del-client]').forEach(b=>b.onclick=()=>{const c=data.clients.find(x=>x.id===b.dataset.delClient);if(!c||!confirm(`Excluir ${c.name}?`))return;if(data.debts.some(d=>d.clientId===c.id)||data.sales.some(s=>s.clientId===c.id))return toast('Cliente possui histórico de vendas/fiados e não pode ser excluído.');data.clients=data.clients.filter(x=>x!==c);save();renderClientes()});
 }
 function renderFiados(){
   const state=renderFiados.state||{search:'',status:'Todos',due:'Todos',selectedClientId:'',page:1};
