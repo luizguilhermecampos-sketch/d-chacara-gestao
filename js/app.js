@@ -236,7 +236,12 @@ function productForm(product=null){
     if(!inventoryCategories().includes(category))data.categories.push(category);
     data.categories=[...new Set(data.categories)];
     const obj=product||{id:uid('PRD')};
-    Object.assign(obj,{code:$('#pCode').value.trim()||obj.code||obj.id,name,brand:$('#pBrand').value.trim(),category,supplier:$('#pSupplier').value.trim(),unit:$('#pUnit').value||'un',stock:Math.max(0,Number($('#pStock').value||0)),min:Math.max(0,Number($('#pMin').value||0)),cost:Math.max(0,Number($('#pCost').value||0)),price:Math.max(0,Number($('#pPrice').value||0)),photo,description:$('#pDescription').value.trim()});
+    const unit=$('#pUnit').value||'un';
+    const stockRaw=Math.max(0,Number($('#pStock').value||0));
+    const minRaw=Math.max(0,Number($('#pMin').value||0));
+    const stock=isFractionalUnit(unit)?Number(stockRaw.toFixed(3)):Math.round(stockRaw);
+    const min=isFractionalUnit(unit)?Number(minRaw.toFixed(3)):Math.round(minRaw);
+    Object.assign(obj,{code:$('#pCode').value.trim()||obj.code||obj.id,name,brand:$('#pBrand').value.trim(),category,supplier:$('#pSupplier').value.trim(),unit,stock,min,cost:Math.max(0,Number($('#pCost').value||0)),price:Math.max(0,Number($('#pPrice').value||0)),photo,description:$('#pDescription').value.trim()});
     if(!product)data.products.push(obj);
     save();
     closeModal();
@@ -302,7 +307,60 @@ function openInventoryImport(){
 }
 
 function bindDelete(selector,arr,onBefore){$$(selector).forEach(b=>b.onclick=()=>{const id=b.getAttribute(selector.match(/data-del-([a-z]+)/)?.[0]||'data-id');if(!confirm('Deseja realmente excluir este registro?'))return;const i=arr.findIndex(x=>String(x.id)===String(id));if(i<0)return;if(onBefore)onBefore(arr[i]);arr.splice(i,1);save();location.reload()})}
-function photoPicker(initial='',done){let photo=initial;const box=$('#photoBox'),inp=$('#photoInput');const render=()=>{box.innerHTML=photo?`<img src="${photo}"><span>Trocar foto</span><input id="photoInput" type="file" accept="image/*" hidden>`:`<div class="photo-placeholder">${ic('camera')}</div><span>Clique para adicionar uma foto</span><input id="photoInput" type="file" accept="image/*" hidden>`;const ni=$('#photoInput');box.onclick=()=>ni.click();ni.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{photo=ev.target.result;render();done(photo)};r.readAsDataURL(f)}};render();done(photo)}
+function photoPicker(initial='',done){
+  let photo=initial||'';
+  const box=$('#photoBox');
+  if(!box)return;
+
+  const compressImage=(file,callback)=>{
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        const maxSide=900;
+        let w=img.width,h=img.height;
+        const scale=Math.min(1,maxSide/Math.max(w,h));
+        w=Math.max(1,Math.round(w*scale));
+        h=Math.max(1,Math.round(h*scale));
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        callback(canvas.toDataURL('image/jpeg',0.78));
+      };
+      img.onerror=()=>callback(ev.target.result);
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const render=()=>{
+    box.innerHTML=photo
+      ? `<img src="${photo}" alt="Foto do produto"><span>Trocar foto</span><small>Clique para selecionar outra imagem</small><input id="photoInput" type="file" accept="image/*" hidden>`
+      : `<div class="photo-placeholder">${ic('camera')}</div><span>Adicionar foto</span><small>JPG/PNG • será otimizada automaticamente</small><input id="photoInput" type="file" accept="image/*" hidden>`;
+
+    const input=$('#photoInput');
+    box.onclick=e=>{
+      if(e.target===input)return;
+      input.click();
+    };
+    input.onchange=e=>{
+      const file=e.target.files?.[0];
+      if(!file)return;
+      if(!file.type.startsWith('image/'))return toast('Selecione um arquivo de imagem.');
+      if(file.size>12*1024*1024)return toast('A imagem é muito grande. Use uma foto menor que 12 MB.');
+      compressImage(file,result=>{
+        photo=result;
+        done(photo);
+        render();
+        toast('Foto adicionada. Clique em Salvar produto para confirmar.');
+      });
+    };
+  };
+
+  render();
+  done(photo);
+}
 function renderDashboard(){
   const todaySales = data.sales.filter(s=>(s.date||'').slice(0,10)===today()).reduce((a,b)=>a+Number(b.total||0),0);
   const monthKey=today().slice(0,7);
@@ -823,7 +881,7 @@ function renderVendas(){
     save();toast(payment==='Fiado'?'Venda fiada finalizada e conta criada em Fiados.':'Venda finalizada com sucesso.');setTimeout(()=>location.reload(),600);
   };
   $$('[data-print-sale]').forEach(b=>b.onclick=()=>printSaleReceipt(data.sales.find(s=>s.id===b.dataset.printSale)));
-  $$('[data-edit-sale]').forEach(b=>b.onclick=()=>editSaleModal(b.dataset.editSale));
+  
   $$('[data-delete-sale]').forEach(b=>b.onclick=()=>deleteSaleRecord(b.dataset.deleteSale));
   draw();
 }
@@ -884,7 +942,7 @@ function renderEstoque(){
   $('#exportStockBtn').onclick=()=>exportInventoryCSV(filtered);
   $$('[data-stock-category]').forEach(btn=>btn.onclick=()=>{state.category=btn.dataset.stockCategory;state.page=1;renderEstoque()});
   $$('[data-stock-page]').forEach(btn=>btn.onclick=()=>{state.page=Number(btn.dataset.stockPage);renderEstoque()});
-  $$('[data-edit-product]').forEach(btn=>btn.onclick=()=>productForm(data.products.find(p=>p.id===btn.dataset.editProduct)));
+  
   $$('[data-adjust-product]').forEach(btn=>btn.onclick=()=>openInventoryAdjustment(btn.dataset.adjustProduct));
   $$('[data-del-product]').forEach(btn=>btn.onclick=()=>{
     const p=data.products.find(x=>x.id===btn.dataset.delProduct);
@@ -1099,7 +1157,7 @@ function renderEntradas(){
   $('#launchEntryBtn').onclick=()=>saveDraft('Pendente');
   $('#receiveEntryBtn').onclick=()=>saveDraft('Recebida');
   $('#clearEntryDraftBtn').onclick=()=>{renderEntradas.state={supplier:'',nf:'',date:today(),obs:'',items:[]};renderEntradas()};
-  $$('[data-edit-entry]').forEach(b=>b.onclick=()=>entryForm(data.entries.find(e=>e.id===b.dataset.editEntry)));
+  
   $$('[data-receive-entry]').forEach(b=>b.onclick=()=>receiveEntry(data.entries.find(e=>e.id===b.dataset.receiveEntry)));
   $$('[data-del-entry]').forEach(b=>b.onclick=()=>{
     const e=data.entries.find(x=>x.id===b.dataset.delEntry);
@@ -1229,7 +1287,7 @@ function renderDespesas(){
   $('#expenseAttachQuick').onclick=()=>openExpenseAttachmentModal();
   $('#expenseExportQuick').onclick=()=>downloadCSV('despesas.csv',['Data','Categoria','Descrição','Fornecedor','Pagamento','Valor','Status'],filtered.map(e=>[e.date,e.category,e.description,e.supplier,e.payment,e.value,e.status]));
   $('#expenseCategoriesQuick').onclick=()=>openExpenseCategoriesManager();
-  $$('[data-edit-expense]').forEach(b=>b.onclick=()=>expenseForm(data.expenses.find(e=>e.id===b.dataset.editExpense)));
+  
   $$('[data-receipt-expense]').forEach(b=>b.onclick=()=>openExpenseAttachmentModal(data.expenses.find(e=>e.id===b.dataset.receiptExpense)));
   $$('[data-del-expense]').forEach(b=>b.onclick=()=>{const e=data.expenses.find(x=>x.id===b.dataset.delExpense);if(!e||!confirm('Excluir esta despesa?'))return;data.expenses=data.expenses.filter(x=>x!==e);save();renderDespesas()});
 }
@@ -1319,7 +1377,7 @@ function renderClientes(){
   $('#clientSearch').oninput=e=>{state.search=e.target.value;state.page=1;renderClientes()};
   $$('[data-client-page]').forEach(b=>b.onclick=()=>{state.page=+b.dataset.clientPage;renderClientes()});
   $$('[data-new-debt-client]').forEach(b=>b.onclick=()=>{sessionStorage.setItem('pdv_prefill_client',b.dataset.newDebtClient);location.href='vendas.html'});
-  $$('[data-edit-client]').forEach(b=>b.onclick=()=>clientForm(data.clients.find(c=>c.id===b.dataset.editClient)));
+  
   $$('[data-del-client]').forEach(b=>b.onclick=()=>{const c=data.clients.find(x=>x.id===b.dataset.delClient);if(!c||!confirm(`Excluir ${c.name}?`))return;if(data.debts.some(d=>d.clientId===c.id)||data.sales.some(s=>s.clientId===c.id))return toast('Cliente possui histórico de vendas/fiados e não pode ser excluído.');data.clients=data.clients.filter(x=>x!==c);save();renderClientes()});
 }
 function renderFiados(){
@@ -1374,7 +1432,7 @@ function renderFiados(){
   $('#debtDue').onchange=e=>{state.due=e.target.value;state.page=1;renderFiados()};
   $$('[data-debt-page]').forEach(b=>b.onclick=()=>{state.page=+b.dataset.debtPage;renderFiados()});
   $$('[data-select-client]').forEach(row=>row.onclick=e=>{if(e.target.closest('button'))return;state.selectedClientId=row.dataset.selectClient;renderFiados()});
-  $$('[data-edit-debt]').forEach(b=>b.onclick=()=>debtForm(data.debts.find(d=>d.id===b.dataset.editDebt)));
+  
   $$('[data-pay-debt]').forEach(b=>b.onclick=()=>paymentForm(data.debts.find(d=>d.id===b.dataset.payDebt)));
   $$('[data-del-debt]').forEach(b=>b.onclick=()=>{const d=data.debts.find(x=>x.id===b.dataset.delDebt);if(!d)return;if(d.saleId)return toast('Este fiado foi criado por uma venda e deve ser preservado no histórico.');if(!confirm('Excluir este fiado?'))return;data.payments=data.payments.filter(p=>p.debtId!==d.id);data.debts=data.debts.filter(x=>x!==d);save();renderFiados()});
   if(selectedClient){
