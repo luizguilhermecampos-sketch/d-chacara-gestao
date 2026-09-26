@@ -209,10 +209,19 @@ function manageCategoriesModal(){
   draw();
 }
 function productForm(product=null){
+  const editing=!!product;
+  const editingId=product?.id||'';
   normalizeInventoryData();
+
+  // normalizeInventoryData recria os objetos; ao editar, precisamos
+  // recuperar a referência REAL que está dentro de data.products.
+  if(editingId){
+    product=data.products.find(p=>String(p.id)===String(editingId))||null;
+    if(!product)return toast('Produto não encontrado para edição.');
+  }
+
   let photo=product?.photo||'';
   const categories=inventoryCategories();
-  const editing=!!product;
 
   modal(`
     <div class="product-modal-head">
@@ -332,8 +341,14 @@ function productForm(product=null){
       description:$('#pDescription').value.trim()
     });
 
-    if(!product)data.products.push(obj);
+    if(!editing){
+      data.products.push(obj);
+    }else{
+      const idx=data.products.findIndex(p=>String(p.id)===String(obj.id));
+      if(idx>=0)data.products[idx]=obj;
+    }
 
+    // grava imediatamente no cache local e agenda sincronização Supabase
     save();
     closeModal();
     toast(editing?`Produto atualizado • Estoque: ${qtyLabel(stock,unit)}`:'Produto cadastrado com sucesso.');
@@ -440,6 +455,7 @@ function photoPicker(initial='',done){
       compress(file,result=>{
         photo=result;
         done(photo);
+        box.dataset.photoReady='true';
         render();
         toast('Foto selecionada. Agora clique em Salvar alterações.');
       });
@@ -447,6 +463,7 @@ function photoPicker(initial='',done){
   };
 
   render();
+  if(photo)box.dataset.photoReady='true';
   done(photo);
 }
 function renderDashboard(){

@@ -854,3 +854,23 @@ body{margin:0}
   .product-edit-layout{grid-template-columns:1fr}
   .product-edit-fields{grid-template-columns:1fr!important}
 }
+
+/* ===== v1.7 FIX EDIÇÃO ===== */
+#photoBox[data-photo-ready="true"]{
+  border-color:#78b991!important;
+  box-shadow:0 0 0 3px rgba(12,130,76,.08);
+}
+#photoBox[data-photo-ready="true"]::after{
+  content:"Foto pronta para salvar";
+  position:absolute;
+  top:8px;
+  right:8px;
+  padding:5px 8px;
+  border-radius:999px;
+  background:#087247;
+  color:#fff;
+  font-size:9px;
+  font-weight:850;
+  z-index:4;
+}
+.product-photo-edit{position:relative!important}
