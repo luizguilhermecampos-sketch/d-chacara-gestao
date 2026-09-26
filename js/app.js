@@ -41,7 +41,44 @@ async function pushCloudState(force=false){
   finally{cloudSaving=false;updateCloudBadge();if(cloudPending){cloudPending=false;pushCloudState();}}
 }
 function queueCloudSave(){clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>pushCloudState(),180);}
-const save=()=>{localStorage.setItem(KEY,JSON.stringify(data));queueCloudSave()};
+
+function saveLocalCache(){
+  try{
+    // Cache local leve: fotos ficam no Supabase, evitando estourar o limite do navegador.
+    const cache=structuredClone(data);
+    (cache.products||[]).forEach(p=>{if(p.photo)p.photo=''});
+    localStorage.setItem(KEY,JSON.stringify(cache));
+    return true;
+  }catch(err){
+    console.warn('Cache local não pôde ser atualizado:',err);
+    return false;
+  }
+}
+const save=()=>{saveLocalCache();queueCloudSave()};
+
+async function persistNow(){
+  saveLocalCache();
+  cloudStatus='syncing';
+  updateCloudBadge();
+  try{
+    const {error}=await sb.from('app_state').upsert({
+      id:'main',
+      payload:data,
+      updated_at:new Date().toISOString()
+    });
+    if(error)throw error;
+    cloudReady=true;
+    cloudStatus='online';
+    updateCloudBadge();
+    return true;
+  }catch(err){
+    console.error('Supabase save imediato:',err);
+    cloudStatus='offline';
+    updateCloudBadge();
+    return false;
+  }
+}
+
 await loadCloudState();
 if(!Array.isArray(data.expenseCategories)||!data.expenseCategories.length){data.expenseCategories=[...blank.expenseCategories]}
 data.expenseCategories=[...new Set([...(data.expenseCategories||[]), ...(data.expenses||[]).map(e=>e.category).filter(Boolean)])];
@@ -147,7 +184,6 @@ function normalizeInventoryData(){
   const base=Array.isArray(data.categories)&&data.categories.length?data.categories:INVENTORY_DEFAULT_CATEGORIES;
   data.categories=[...new Set([...INVENTORY_DEFAULT_CATEGORIES,...base,...fromProducts])].map(x=>String(x).trim()).filter(Boolean);
   data.stockAdjustments=Array.isArray(data.stockAdjustments)?data.stockAdjustments:[];
-  save();
 }
 normalizeInventoryData();
 const inventoryCategories=()=>[...new Set((data.categories||[]).map(x=>String(x).trim()).filter(Boolean))];
@@ -311,10 +347,14 @@ function productForm(product=null){
     $('#pCategory').value=category;
   };
 
-  $('#saveProduct').onclick=()=>{
+  $('#saveProduct').onclick=async()=>{
+    const saveBtn=$('#saveProduct');
+    saveBtn.disabled=true;
+    saveBtn.textContent='Salvando...';
+
     const name=$('#pName').value.trim();
     const category=$('#pCategory').value.trim()||'Sem categoria';
-    if(!name)return toast('Informe o nome do produto.');
+    if(!name){saveBtn.disabled=false;saveBtn.textContent=editing?'Salvar alterações':'Salvar produto';return toast('Informe o nome do produto.');}
 
     const unit=$('#pUnit').value||'un';
     const rawStock=Math.max(0,Number($('#pStock').value||0));
@@ -341,6 +381,8 @@ function productForm(product=null){
       description:$('#pDescription').value.trim()
     });
 
+    console.info('[D Chácara] Salvando produto',{id:obj.id,nome:obj.name,estoque:obj.stock,unidade:obj.unit,foto:!!obj.photo});
+
     if(!editing){
       data.products.push(obj);
     }else{
@@ -348,13 +390,18 @@ function productForm(product=null){
       if(idx>=0)data.products[idx]=obj;
     }
 
-    // grava imediatamente no cache local e agenda sincronização Supabase
-    save();
-    closeModal();
-    toast(editing?`Produto atualizado • Estoque: ${qtyLabel(stock,unit)}`:'Produto cadastrado com sucesso.');
-
+    // Atualiza a tela primeiro, depois confirma a gravação central.
     if(page==='estoque')renderEstoque();
     if(page==='vendas')renderVendas();
+
+    const ok=await persistNow();
+    closeModal();
+
+    if(ok){
+      toast(editing?`Produto atualizado • Estoque: ${qtyLabel(stock,unit)}`:'Produto cadastrado com sucesso.');
+    }else{
+      toast('Alteração feita localmente, mas não foi possível sincronizar com o Supabase.');
+    }
   };
 }
 function openInventoryAdjustment(productId=''){
@@ -424,13 +471,13 @@ function photoPicker(initial='',done){
     reader.onload=e=>{
       const img=new Image();
       img.onload=()=>{
-        const max=800;
+        const max=500;
         const scale=Math.min(1,max/Math.max(img.width,img.height));
         const canvas=document.createElement('canvas');
         canvas.width=Math.max(1,Math.round(img.width*scale));
         canvas.height=Math.max(1,Math.round(img.height*scale));
         canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
-        cb(canvas.toDataURL('image/jpeg',0.76));
+        cb(canvas.toDataURL('image/jpeg',0.62));
       };
       img.onerror=()=>cb(e.target.result);
       img.src=e.target.result;
