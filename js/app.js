@@ -212,14 +212,87 @@ function productForm(product=null){
   normalizeInventoryData();
   let photo=product?.photo||'';
   const categories=inventoryCategories();
-  modal(`<h3>${product?'Editar':'Novo'} produto</h3><p class="modal-subtitle">Cadastre o item com foto, categoria, fornecedor, custo e preço de venda.</p><div class="form-grid stock-form-grid"><label class="full"><span>Foto do produto</span><div id="photoBox" class="photo-box"></div></label><label>Código<input id="pCode" value="${esc(product?.code||'')}" placeholder="Ex.: PRD-0012"></label><label>Produto<input id="pName" value="${esc(product?.name||'')}" placeholder="Nome do produto"></label><label>Marca<input id="pBrand" value="${esc(product?.brand||'')}" placeholder="Marca"></label><label>Categoria<div class="stock-inline-field"><input id="pCategory" list="categoryList" value="${esc(product?.category||'')}" placeholder="Selecione ou digite"><datalist id="categoryList">${categories.map(cat=>`<option value="${esc(cat)}"></option>`).join('')}</datalist><button type="button" class="btn soft" id="manageCategoryFromProduct">Categorias</button></div></label><label>Fornecedor<input id="pSupplier" value="${esc(product?.supplier||'')}" placeholder="Fornecedor"></label><label>Unidade de venda<select id="pUnit">${PRODUCT_UNITS.map(u=>`<option value="${u}" ${u===productUnit(product)?'selected':''}>${u}</option>`).join('')}</select></label><label>Estoque atual<input id="pStock" type="number" min="0" step="${isFractionalUnit(productUnit(product))?'0.001':'1'}" value="${Number(product?.stock||0)}"></label><label>Estoque mínimo<input id="pMin" type="number" min="0" step="${isFractionalUnit(productUnit(product))?'0.001':'1'}" value="${Number(product?.min ?? data.settings?.defaultMinStock ?? 0)}"></label><label>Custo por unidade de venda<input id="pCost" type="number" min="0" step="0.01" value="${Number(product?.cost||0)}"></label><label>Preço por unidade de venda<input id="pPrice" type="number" min="0" step="0.01" value="${Number(product?.price||0)}"></label><label class="full">Descrição<input id="pDescription" value="${esc(product?.description||'')}" placeholder="Descrição curta do item"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelProduct">Cancelar</button><button class="btn primary" id="saveProduct">Salvar produto</button></div>`);
+  const editing=!!product;
+
+  modal(`
+    <div class="product-modal-head">
+      <div>
+        <h3>${editing?'Editar produto':'Novo produto'}</h3>
+        <p class="modal-subtitle">${editing?'Altere os dados, estoque e foto deste produto.':'Cadastre o produto com seus dados de estoque e venda.'}</p>
+      </div>
+      ${editing?`<span class="edit-mode-pill">EDITANDO</span>`:''}
+    </div>
+
+    <div class="product-edit-layout">
+      <div class="product-photo-panel">
+        <span class="field-title">Foto do produto</span>
+        <div id="photoBox" class="photo-box product-photo-edit"></div>
+        <small class="photo-help">Clique na área acima para escolher ou trocar a foto.</small>
+      </div>
+
+      <div class="form-grid stock-form-grid product-edit-fields">
+        <label>Código<input id="pCode" value="${esc(product?.code||'')}" placeholder="Ex.: PRD-0012"></label>
+        <label>Produto<input id="pName" value="${esc(product?.name||'')}" placeholder="Nome do produto"></label>
+        <label>Marca<input id="pBrand" value="${esc(product?.brand||'')}" placeholder="Marca"></label>
+
+        <label>Categoria
+          <div class="stock-inline-field">
+            <input id="pCategory" list="categoryList" value="${esc(product?.category||'')}" placeholder="Selecione ou digite">
+            <datalist id="categoryList">${categories.map(cat=>`<option value="${esc(cat)}"></option>`).join('')}</datalist>
+            <button type="button" class="btn soft" id="manageCategoryFromProduct">Categorias</button>
+          </div>
+        </label>
+
+        <label>Fornecedor<input id="pSupplier" value="${esc(product?.supplier||'')}" placeholder="Fornecedor"></label>
+        <label>Unidade de venda
+          <select id="pUnit">${PRODUCT_UNITS.map(u=>`<option value="${u}" ${u===productUnit(product)?'selected':''}>${u}</option>`).join('')}</select>
+        </label>
+
+        <label class="stock-highlight-field">
+          <span>Estoque atual</span>
+          <div class="stock-edit-control">
+            <input id="pStock" type="number" min="0" step="${isFractionalUnit(productUnit(product))?'0.001':'1'}" value="${Number(product?.stock||0)}">
+            <b id="pStockUnit">${esc(productUnit(product))}</b>
+          </div>
+          <small>Altere aqui a quantidade disponível.</small>
+        </label>
+
+        <label class="stock-highlight-field">
+          <span>Estoque mínimo</span>
+          <div class="stock-edit-control">
+            <input id="pMin" type="number" min="0" step="${isFractionalUnit(productUnit(product))?'0.001':'1'}" value="${Number(product?.min ?? data.settings?.defaultMinStock ?? 0)}">
+            <b id="pMinUnit">${esc(productUnit(product))}</b>
+          </div>
+          <small>Usado para o alerta de estoque baixo.</small>
+        </label>
+
+        <label>Custo por unidade<input id="pCost" type="number" min="0" step="0.01" value="${Number(product?.cost||0)}"></label>
+        <label>Preço de venda<input id="pPrice" type="number" min="0" step="0.01" value="${Number(product?.price||0)}"></label>
+        <label class="full">Descrição<input id="pDescription" value="${esc(product?.description||'')}" placeholder="Descrição curta do item"></label>
+      </div>
+    </div>
+
+    <div class="stock-modal-actions product-modal-actions">
+      <button class="btn outline" id="cancelProduct">Cancelar</button>
+      <button class="btn primary" id="saveProduct">${editing?'Salvar alterações':'Salvar produto'}</button>
+    </div>
+  `);
+
   photoPicker(photo,v=>photo=v);
-  $('#pUnit')?.addEventListener('change',()=>{
-    const step=isFractionalUnit($('#pUnit').value)?'0.001':'1';
-    $('#pStock').step=step;$('#pMin').step=step;
-  });
+
+  const syncProductUnit=()=>{
+    const unit=$('#pUnit').value||'un';
+    const step=isFractionalUnit(unit)?'0.001':'1';
+    $('#pStock').step=step;
+    $('#pMin').step=step;
+    $('#pStockUnit').textContent=unit;
+    $('#pMinUnit').textContent=unit;
+  };
+  $('#pUnit').addEventListener('change',syncProductUnit);
+
   $('#cancelProduct').onclick=closeModal;
-  $('#manageCategoryFromProduct').onclick=(e)=>{
+
+  $('#manageCategoryFromProduct').onclick=e=>{
     e.preventDefault();
     const value=prompt('Digite a categoria do produto:',$('#pCategory').value||'');
     if(value===null)return;
@@ -227,25 +300,44 @@ function productForm(product=null){
     if(!category)return toast('Digite uma categoria válida.');
     if(!data.categories.some(c=>String(c).toLowerCase()===category.toLowerCase()))data.categories.push(category);
     $('#pCategory').value=category;
-    toast('Categoria selecionada.');
   };
+
   $('#saveProduct').onclick=()=>{
     const name=$('#pName').value.trim();
-    const category=($('#pCategory').value.trim()||'Sem categoria');
+    const category=$('#pCategory').value.trim()||'Sem categoria';
     if(!name)return toast('Informe o nome do produto.');
+
+    const unit=$('#pUnit').value||'un';
+    const rawStock=Math.max(0,Number($('#pStock').value||0));
+    const rawMin=Math.max(0,Number($('#pMin').value||0));
+    const stock=isFractionalUnit(unit)?Number(rawStock.toFixed(3)):Math.round(rawStock);
+    const min=isFractionalUnit(unit)?Number(rawMin.toFixed(3)):Math.round(rawMin);
+
     if(!inventoryCategories().includes(category))data.categories.push(category);
     data.categories=[...new Set(data.categories)];
+
     const obj=product||{id:uid('PRD')};
-    const unit=$('#pUnit').value||'un';
-    const stockRaw=Math.max(0,Number($('#pStock').value||0));
-    const minRaw=Math.max(0,Number($('#pMin').value||0));
-    const stock=isFractionalUnit(unit)?Number(stockRaw.toFixed(3)):Math.round(stockRaw);
-    const min=isFractionalUnit(unit)?Number(minRaw.toFixed(3)):Math.round(minRaw);
-    Object.assign(obj,{code:$('#pCode').value.trim()||obj.code||obj.id,name,brand:$('#pBrand').value.trim(),category,supplier:$('#pSupplier').value.trim(),unit,stock,min,cost:Math.max(0,Number($('#pCost').value||0)),price:Math.max(0,Number($('#pPrice').value||0)),photo,description:$('#pDescription').value.trim()});
+    Object.assign(obj,{
+      code:$('#pCode').value.trim()||obj.code||obj.id,
+      name,
+      brand:$('#pBrand').value.trim(),
+      category,
+      supplier:$('#pSupplier').value.trim(),
+      unit,
+      stock,
+      min,
+      cost:Math.max(0,Number($('#pCost').value||0)),
+      price:Math.max(0,Number($('#pPrice').value||0)),
+      photo,
+      description:$('#pDescription').value.trim()
+    });
+
     if(!product)data.products.push(obj);
+
     save();
     closeModal();
-    toast(product?'Produto atualizado com sucesso.':'Produto cadastrado com sucesso.');
+    toast(editing?`Produto atualizado • Estoque: ${qtyLabel(stock,unit)}`:'Produto cadastrado com sucesso.');
+
     if(page==='estoque')renderEstoque();
     if(page==='vendas')renderVendas();
   };
@@ -312,48 +404,44 @@ function photoPicker(initial='',done){
   const box=$('#photoBox');
   if(!box)return;
 
-  const compressImage=(file,callback)=>{
+  const compress=(file,cb)=>{
     const reader=new FileReader();
-    reader.onload=ev=>{
+    reader.onload=e=>{
       const img=new Image();
       img.onload=()=>{
-        const maxSide=900;
-        let w=img.width,h=img.height;
-        const scale=Math.min(1,maxSide/Math.max(w,h));
-        w=Math.max(1,Math.round(w*scale));
-        h=Math.max(1,Math.round(h*scale));
+        const max=800;
+        const scale=Math.min(1,max/Math.max(img.width,img.height));
         const canvas=document.createElement('canvas');
-        canvas.width=w;canvas.height=h;
-        const ctx=canvas.getContext('2d');
-        ctx.drawImage(img,0,0,w,h);
-        callback(canvas.toDataURL('image/jpeg',0.78));
+        canvas.width=Math.max(1,Math.round(img.width*scale));
+        canvas.height=Math.max(1,Math.round(img.height*scale));
+        canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+        cb(canvas.toDataURL('image/jpeg',0.76));
       };
-      img.onerror=()=>callback(ev.target.result);
-      img.src=ev.target.result;
+      img.onerror=()=>cb(e.target.result);
+      img.src=e.target.result;
     };
     reader.readAsDataURL(file);
   };
 
   const render=()=>{
-    box.innerHTML=photo
-      ? `<img src="${photo}" alt="Foto do produto"><span>Trocar foto</span><small>Clique para selecionar outra imagem</small><input id="photoInput" type="file" accept="image/*" hidden>`
-      : `<div class="photo-placeholder">${ic('camera')}</div><span>Adicionar foto</span><small>JPG/PNG • será otimizada automaticamente</small><input id="photoInput" type="file" accept="image/*" hidden>`;
-
+    box.innerHTML=`
+      ${photo
+        ? `<div class="photo-preview-wrap"><img src="${photo}" alt="Foto do produto"><span class="photo-change-overlay">${ic('camera')} Trocar foto</span></div>`
+        : `<div class="photo-empty-state"><div class="photo-placeholder">${ic('camera')}</div><strong>Adicionar foto</strong><span>Clique aqui para selecionar</span></div>`
+      }
+      <input id="photoInput" type="file" accept="image/*" hidden>
+    `;
     const input=$('#photoInput');
-    box.onclick=e=>{
-      if(e.target===input)return;
-      input.click();
-    };
+    box.onclick=()=>input.click();
     input.onchange=e=>{
       const file=e.target.files?.[0];
       if(!file)return;
-      if(!file.type.startsWith('image/'))return toast('Selecione um arquivo de imagem.');
-      if(file.size>12*1024*1024)return toast('A imagem é muito grande. Use uma foto menor que 12 MB.');
-      compressImage(file,result=>{
+      if(!file.type.startsWith('image/'))return toast('Selecione uma imagem válida.');
+      compress(file,result=>{
         photo=result;
         done(photo);
         render();
-        toast('Foto adicionada. Clique em Salvar produto para confirmar.');
+        toast('Foto selecionada. Agora clique em Salvar alterações.');
       });
     };
   };
