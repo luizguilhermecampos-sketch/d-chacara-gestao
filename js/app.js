@@ -1570,11 +1570,36 @@ function renderClientes(){
   };
 
   $('#newClient').onclick=()=>clientForm();
-  $('#clientSearch').oninput=e=>{
-    state.search=e.target.value;
+
+  // Busca de Clientes: mantém o mesmo input no DOM, preserva foco/cursor
+  // e aplica um debounce curto para evitar qualquer perda de foco durante a digitação.
+  const clientSearchInput=$('#clientSearch');
+  let clientSearchTimer=null;
+  const updateClientSearch=()=>{
+    if(!clientSearchInput)return;
+    const value=clientSearchInput.value;
+    const cursor=clientSearchInput.selectionStart ?? value.length;
+    state.search=value;
     state.page=1;
     refreshClientList();
+
+    // Garantia extra: a tabela pode ser redesenhada, mas o foco continua na pesquisa.
+    requestAnimationFrame(()=>{
+      if(!document.body.contains(clientSearchInput))return;
+      clientSearchInput.focus({preventScroll:true});
+      try{clientSearchInput.setSelectionRange(cursor,cursor)}catch(_){ }
+    });
   };
+
+  clientSearchInput.addEventListener('input',()=>{
+    clearTimeout(clientSearchTimer);
+    clientSearchTimer=setTimeout(updateClientSearch,80);
+  });
+  clientSearchInput.addEventListener('keydown',e=>{
+    // Evita que Enter dispare qualquer ação inesperada e retire o foco da busca.
+    if(e.key==='Enter')e.preventDefault();
+  });
+
   refreshClientList();
 }
 function renderFiados(){
