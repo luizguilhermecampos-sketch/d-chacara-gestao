@@ -1556,7 +1556,24 @@ function renderClientes(){
     <div class="stock-pagination"><span>Exibindo ${filtered.length?start+1:0} a ${Math.min(start+perPage,filtered.length)} de ${filtered.length} cliente(s)</span><div class="stock-page-buttons">${Array.from({length:pages},(_,i)=>i+1).map(n=>`<button class="${n===state.page?'active':''}" data-client-page="${n}">${n}</button>`).join('')}</div></div>
   </div>`;
   $('#newClient').onclick=()=>clientForm();
-  $('#clientSearch').oninput=e=>{state.search=e.target.value;state.page=1;renderClientes()};
+  let clientSearchTimer;
+  $('#clientSearch').oninput=e=>{
+    const value=e.target.value;
+    const cursor=e.target.selectionStart??value.length;
+    state.search=value;
+    state.page=1;
+    clearTimeout(clientSearchTimer);
+    clientSearchTimer=setTimeout(()=>{
+      renderClientes();
+      requestAnimationFrame(()=>{
+        const input=$('#clientSearch');
+        if(!input)return;
+        input.focus({preventScroll:true});
+        const pos=Math.min(cursor,input.value.length);
+        try{input.setSelectionRange(pos,pos)}catch{}
+      });
+    },180);
+  };
   $$('[data-client-page]').forEach(b=>b.onclick=()=>{state.page=+b.dataset.clientPage;renderClientes()});
   $$('[data-new-debt-client]').forEach(b=>b.onclick=()=>{sessionStorage.setItem('pdv_prefill_client',b.dataset.newDebtClient);location.href='vendas.html'});
   
