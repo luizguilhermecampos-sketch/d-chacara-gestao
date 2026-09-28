@@ -1,0 +1,16 @@
+D Chácara AgroGestão — versão 1.16
+
+Atualizações consolidadas:
+1) ENTRADAS
+- Cadastro rápido de produto novo dentro da própria entrada.
+- Produto é criado com estoque inicial 0.
+- A quantidade entra no estoque somente ao receber a mercadoria.
+
+2) VENDAS
+- Venda pode ser EDITADA mesmo com pagamento já concluído.
+- Venda pode ser EXCLUÍDA mesmo com pagamento já concluído.
+- Ao editar, o estoque é restaurado e recalculado conforme as novas quantidades.
+- Em venda fiada, pagamentos existentes são reconciliados com o novo total.
+- Se o novo total ficar maior que o já pago, a diferença volta como saldo em aberto.
+- Se o novo total ficar menor que o já pago, os pagamentos vinculados são ajustados para não exceder o novo total.
+- Ao excluir a venda, os itens retornam ao estoque e fiado/pagamentos vinculados são removidos.

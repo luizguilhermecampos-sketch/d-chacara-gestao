@@ -582,31 +582,51 @@ function saleHasPayments(saleId){
   const d=saleDebt(saleId);
   return !!(d && data.payments.some(p=>p.debtId===d.id));
 }
+function debtPayments(debtId){
+  return (data.payments||[]).filter(p=>p.debtId===debtId);
+}
+function debtPaidTotal(debtId){
+  return debtPayments(debtId).reduce((sum,p)=>sum+Number(p.value||0),0);
+}
+function trimDebtPaymentsToTotal(debtId,maxTotal){
+  let remaining=Math.max(0,Number(maxTotal||0));
+  const linked=(data.payments||[]).filter(p=>p.debtId===debtId);
+  const keepIds=new Set();
+  for(const p of linked){
+    if(remaining<=0)continue;
+    const old=Math.max(0,Number(p.value||0));
+    const next=Math.min(old,remaining);
+    if(next>0){p.value=next;keepIds.add(p.id);remaining-=next;}
+  }
+  data.payments=(data.payments||[]).filter(p=>p.debtId!==debtId||keepIds.has(p.id));
+}
 function deleteSaleRecord(saleId){
   const sale=data.sales.find(s=>s.id===saleId);
   if(!sale)return;
-  if(saleHasPayments(saleId))return toast('Essa venda possui pagamento registrado no fiado. Estorne o pagamento antes de excluir a venda.');
-  if(!confirm('Excluir esta venda? O estoque dos produtos será devolvido.'))return;
-  restoreSaleStock(sale);
   const d=saleDebt(saleId);
+  const paid=d?debtPaidTotal(d.id):0;
+  const extra=paid>0?`\n\nEssa venda possui ${money(paid)} em pagamento(s) registrado(s). Esses pagamentos e o fiado vinculado também serão excluídos.`:'';
+  if(!confirm(`Excluir esta venda? O estoque dos produtos será devolvido.${extra}\n\nEsta ação não pode ser desfeita.`))return;
+  restoreSaleStock(sale);
   if(d){
     data.payments=data.payments.filter(p=>p.debtId!==d.id);
     data.debts=data.debts.filter(x=>x.id!==d.id);
   }
   data.sales=data.sales.filter(x=>x.id!==saleId);
   save();
-  toast('Venda excluída e estoque restaurado.');
+  toast('Venda excluída, estoque restaurado e financeiro vinculado removido.');
   if(page==='vendas')renderVendas(); else location.reload();
 }
 function editSaleModal(saleId){
   const sale=data.sales.find(s=>s.id===saleId);
   if(!sale)return;
-  if(saleHasPayments(saleId))return toast('Essa venda possui pagamento no fiado. Para manter o histórico correto, ela não pode ser editada.');
   const originalLines=(sale.lines||[]).map(x=>({...x}));
   const lineRows=(sale.lines||[]).map((line,i)=>`<tr><td>${esc(line.name||'-')}</td><td><div class="edit-sale-qty"><input class="mini-input" data-edit-sale-qty="${i}" type="number" min="${isFractionalUnit(line.unit)?'0.001':'1'}" step="${isFractionalUnit(line.unit)?'0.001':'1'}" value="${Number(line.qty||1)}"><span>${esc(line.unit||'un')}</span></div></td><td><input class="mini-input" data-edit-sale-price="${i}" type="number" min="0" step="0.01" value="${Number(line.price||0)}"></td><td><input class="mini-input" data-edit-sale-discount="${i}" type="number" min="0" step="0.01" value="${Number(line.discount||0)}"></td></tr>`).join('');
   const currentType=sale.paymentType||(String(sale.payment||'').startsWith('Cartão')?'Cartão':sale.payment||'PIX');
   const currentCard=sale.cardType||(/Débito/i.test(sale.payment||'')?'Débito':'Crédito');
-  modal(`<h3>Editar venda</h3><p class="modal-subtitle">Ajuste cliente, pagamento e quantidades. O estoque será recalculado automaticamente.</p><div class="form-grid"><label>Cliente<select id="editSaleClient"><option value="">Venda sem cliente</option>${data.clients.map(c=>`<option value="${c.id}" ${c.id===sale.clientId?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label><label>Forma de pagamento<select id="editSalePayment">${['PIX','Cartão','Dinheiro','Boleto','Fiado'].map(x=>`<option ${x===currentType?'selected':''}>${x}</option>`).join('')}</select></label><label id="editSaleCardBox">Tipo do cartão<select id="editSaleCard"><option ${currentCard==='Crédito'?'selected':''}>Crédito</option><option ${currentCard==='Débito'?'selected':''}>Débito</option></select></label><label id="editSaleDueBox">Vencimento<input id="editSaleDue" type="date" value="${saleDebt(sale.id)?.due||new Date(Date.now()+30*86400000).toISOString().slice(0,10)}"></label><label class="full">Observações<input id="editSaleObs" value="${esc(sale.obs||'')}"></label></div><div class="table-wrap"><table class="table"><thead><tr><th>Produto</th><th>Qtd.</th><th>Valor unit.</th><th>Desconto</th></tr></thead><tbody>${lineRows}</tbody></table></div><div class="stock-modal-actions"><button class="btn outline" id="cancelEditSale">Cancelar</button><button class="btn primary" id="saveEditSale">Salvar alterações</button></div>`);
+  const existingDebt=saleDebt(sale.id);
+  const existingPaid=existingDebt?debtPaidTotal(existingDebt.id):0;
+  modal(`<h3>Editar venda</h3><p class="modal-subtitle">Ajuste cliente, pagamento e quantidades. O estoque será recalculado automaticamente.${existingPaid>0?` <strong>Esta venda já possui ${money(existingPaid)} recebido(s); o financeiro será reconciliado com o novo total.</strong>`:''}</p><div class="form-grid"><label>Cliente<select id="editSaleClient"><option value="">Venda sem cliente</option>${data.clients.map(c=>`<option value="${c.id}" ${c.id===sale.clientId?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label><label>Forma de pagamento<select id="editSalePayment">${['PIX','Cartão','Dinheiro','Boleto','Fiado'].map(x=>`<option ${x===currentType?'selected':''}>${x}</option>`).join('')}</select></label><label id="editSaleCardBox">Tipo do cartão<select id="editSaleCard"><option ${currentCard==='Crédito'?'selected':''}>Crédito</option><option ${currentCard==='Débito'?'selected':''}>Débito</option></select></label><label id="editSaleDueBox">Vencimento<input id="editSaleDue" type="date" value="${saleDebt(sale.id)?.due||new Date(Date.now()+30*86400000).toISOString().slice(0,10)}"></label><label class="full">Observações<input id="editSaleObs" value="${esc(sale.obs||'')}"></label></div><div class="table-wrap"><table class="table"><thead><tr><th>Produto</th><th>Qtd.</th><th>Valor unit.</th><th>Desconto</th></tr></thead><tbody>${lineRows}</tbody></table></div><div class="stock-modal-actions"><button class="btn outline" id="cancelEditSale">Cancelar</button><button class="btn primary" id="saveEditSale">Salvar alterações</button></div>`);
   const toggleExtras=()=>{
     const pay=$('#editSalePayment').value;
     $('#editSaleCardBox').hidden=pay!=='Cartão';
@@ -648,17 +668,27 @@ function editSaleModal(saleId){
         debt={id:uid('FIA'),clientId,saleId:sale.id,description:`Venda fiada • ${newLines.map(x=>`${x.qty}x ${x.name}`).join(', ')}`,value:newTotal,balance:newTotal,due:$('#editSaleDue').value,status:'Em aberto',createdAt:now()};
         data.debts.push(debt);
       }else{
+        // Mantém os pagamentos existentes, mas nunca permite que o total pago
+        // fique maior do que o novo valor da venda.
+        const paidBefore=debtPaidTotal(debt.id);
+        if(paidBefore>newTotal)trimDebtPaymentsToTotal(debt.id,newTotal);
         debt.clientId=clientId;
         debt.description=`Venda fiada • ${newLines.map(x=>`${x.qty}x ${x.name}`).join(', ')}`;
         debt.value=newTotal;
-        debt.balance=newTotal;
         debt.due=$('#editSaleDue').value;
-        debt.status='Em aberto';
       }
-      sale.financialStatus='Em aberto';
-      sale.receivedAmount=0;
+      const paidNow=debtPaidTotal(debt.id);
+      debt.balance=Math.max(0,newTotal-paidNow);
+      debt.status=debt.balance<=0?'Pago':'Em aberto';
+      sale.receivedAmount=Math.min(newTotal,paidNow);
+      sale.financialStatus=debt.balance<=0?'Recebida':paidNow>0?'Parcial':'Em aberto';
     }else{
-      if(debt)data.debts=data.debts.filter(d=>d.id!==debt.id);
+      // Se uma venda que era fiada passar para pagamento imediato, o histórico
+      // de pagamentos do fiado deixa de existir e a venda passa a ser recebida integralmente.
+      if(debt){
+        data.payments=data.payments.filter(p=>p.debtId!==debt.id);
+        data.debts=data.debts.filter(d=>d.id!==debt.id);
+      }
       sale.financialStatus='Recebida';
       sale.receivedAmount=newTotal;
     }
@@ -1127,6 +1157,116 @@ const entryTotal=e=>Number(e.qty||0)*Number(e.cost||0);
 const entryStatusCount=s=>(data.entries||[]).filter(e=>String(e.status||'')===s).length;
 const entryPendingCount=()=> (data.entries||[]).filter(e=>String(e.status||'')!=='Recebida').length;
 function entryCategory(entry){return data.products.find(p=>p.id===entry.productId)?.category||'Outros'}
+
+function captureEntryDraftFields(){
+  const state=renderEntradas.state||{supplier:'',nf:'',date:today(),obs:'',items:[]};
+  renderEntradas.state=state;
+  const supplier=$('#entrySupplier'),nf=$('#entryNf'),date=$('#entryDate'),obs=$('#entryObs');
+  const product=$('#entryProduct'),qty=$('#entryQty'),cost=$('#entryCost');
+  if(supplier)state.supplier=supplier.value.trim();
+  if(nf)state.nf=nf.value.trim();
+  if(date)state.date=date.value;
+  if(obs)state.obs=obs.value.trim();
+  if(product)state.selectedProductId=product.value;
+  if(qty)state.itemQty=qty.value;
+  if(cost)state.itemCost=cost.value;
+  return state;
+}
+
+function entryNewProductForm(){
+  const state=captureEntryDraftFields();
+  let photo='';
+  const categories=inventoryCategories();
+  const supplier=state.supplier||'';
+  const suggestedCost=Math.max(0,Number(state.itemCost||0));
+  modal(`
+    <div class="product-modal-head">
+      <div><h3>Novo produto pela Entrada</h3><p class="modal-subtitle">Cadastre o item sem sair da nota. O estoque inicial ficará zerado e será atualizado somente quando a mercadoria for recebida.</p></div>
+      <span class="edit-mode-pill">NOVO</span>
+    </div>
+    <div class="product-edit-layout">
+      <div class="product-photo-panel">
+        <span class="field-title">Foto do produto</span>
+        <div id="photoBox" class="photo-box product-photo-edit"></div>
+        <small class="photo-help">Opcional. Clique para escolher uma imagem.</small>
+      </div>
+      <div class="form-grid stock-form-grid product-edit-fields">
+        <label>Código<input id="epCode" placeholder="Ex.: PRD-0012"></label>
+        <label>Produto *<input id="epName" placeholder="Nome do produto"></label>
+        <label>Marca<input id="epBrand" placeholder="Marca"></label>
+        <label>Categoria
+          <div class="stock-inline-field">
+            <input id="epCategory" list="entryProductCategoryList" placeholder="Selecione ou digite">
+            <datalist id="entryProductCategoryList">${categories.map(cat=>`<option value="${esc(cat)}"></option>`).join('')}</datalist>
+            <button type="button" class="btn soft" id="entryProductCategoryBtn">Categorias</button>
+          </div>
+        </label>
+        <label>Fornecedor<input id="epSupplier" value="${esc(supplier)}" placeholder="Fornecedor"></label>
+        <label>Unidade de venda<select id="epUnit">${PRODUCT_UNITS.map(u=>`<option value="${u}">${u}</option>`).join('')}</select></label>
+        <label>Estoque mínimo<input id="epMin" type="number" min="0" step="1" value="${Number(data.settings?.defaultMinStock??0)}"></label>
+        <label>Custo por unidade<input id="epCost" type="number" min="0" step="0.01" value="${suggestedCost}"></label>
+        <label>Preço de venda<input id="epPrice" type="number" min="0" step="0.01" value="0"></label>
+        <label class="full">Descrição<input id="epDescription" placeholder="Descrição curta do item"></label>
+      </div>
+    </div>
+    <div class="stock-modal-actions product-modal-actions">
+      <button class="btn outline" id="cancelEntryProduct">Cancelar</button>
+      <button class="btn primary" id="saveEntryProduct">Cadastrar e usar na entrada</button>
+    </div>
+  `);
+  photoPicker('',v=>photo=v);
+  const syncUnit=()=>{
+    const u=$('#epUnit').value||'un';
+    $('#epMin').step=isFractionalUnit(u)?'0.001':'1';
+  };
+  $('#epUnit').addEventListener('change',syncUnit);
+  $('#cancelEntryProduct').onclick=()=>{closeModal();renderEntradas()};
+  $('#entryProductCategoryBtn').onclick=e=>{
+    e.preventDefault();
+    const value=prompt('Digite a categoria do produto:',$('#epCategory').value||'');
+    if(value===null)return;
+    const category=value.trim();
+    if(!category)return toast('Digite uma categoria válida.');
+    if(!data.categories.some(c=>String(c).toLowerCase()===category.toLowerCase()))data.categories.push(category);
+    $('#epCategory').value=category;
+  };
+  $('#saveEntryProduct').onclick=async()=>{
+    const name=$('#epName').value.trim();
+    if(!name)return toast('Informe o nome do produto.');
+    const unit=$('#epUnit').value||'un';
+    const category=$('#epCategory').value.trim()||'Sem categoria';
+    const rawMin=Math.max(0,Number($('#epMin').value||0));
+    const min=isFractionalUnit(unit)?Number(rawMin.toFixed(3)):Math.round(rawMin);
+    const cost=Math.max(0,Number($('#epCost').value||0));
+    const product={
+      id:uid('PRD'),
+      code:$('#epCode').value.trim(),
+      name,
+      brand:$('#epBrand').value.trim(),
+      category,
+      supplier:$('#epSupplier').value.trim(),
+      unit,
+      stock:0,
+      min,
+      cost,
+      price:Math.max(0,Number($('#epPrice').value||0)),
+      photo,
+      description:$('#epDescription').value.trim()
+    };
+    if(!product.code)product.code=product.id;
+    if(!data.categories.some(c=>String(c).toLowerCase()===category.toLowerCase()))data.categories.push(category);
+    data.categories=[...new Set(data.categories)];
+    data.products.push(product);
+    state.selectedProductId=product.id;
+    state.itemCost=String(cost);
+    const ok=await persistNow();
+    closeModal();
+    renderEntradas();
+    const select=$('#entryProduct');
+    if(select)select.value=product.id;
+    toast(ok?'Produto cadastrado. Informe a quantidade e adicione-o à entrada.':'Produto criado localmente, mas a sincronização com o Supabase falhou.');
+  };
+}
 function entryForm(e=null){
   if(!data.products.length)return toast('Cadastre um produto primeiro.');
   const initialProduct=data.products.find(p=>p.id===e?.productId)||data.products[0];
@@ -1279,9 +1419,9 @@ function renderEntradas(){
       <div class="entry-draft-box">
         <div class="entry-draft-head"><h3>Itens da Entrada</h3></div>
         <div class="entry-items-grid">
-          <label class="full"><span>Produto *</span><select id="entryProduct"><option value="">Selecione o produto</option>${data.products.map(p=>`<option value="${p.id}">${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select></label>
-          <label><span>Quantidade *</span><input id="entryQty" type="number" min="0.001" step="0.001" value="1"></label>
-          <label><span>Custo Unitário (R$) *</span><input id="entryCost" type="number" min="0" step="0.01" value="0"></label>
+          <label class="full"><span>Produto *</span><div class="entry-inline-input entry-product-picker"><select id="entryProduct"><option value="">Selecione o produto</option>${data.products.map(p=>`<option value="${p.id}" ${p.id===state.selectedProductId?'selected':''}>${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select><button type="button" class="btn soft" id="newEntryProductBtn">${ic('plus')} Novo produto</button></div><small class="entry-field-help">Se a mercadoria ainda não existe no estoque, cadastre-a aqui sem sair da entrada.</small></label>
+          <label><span>Quantidade *</span><input id="entryQty" type="number" min="0.001" step="0.001" value="${esc(state.itemQty??'1')}"></label>
+          <label><span>Custo Unitário (R$) *</span><input id="entryCost" type="number" min="0" step="0.01" value="${esc(state.itemCost??'0')}"></label>
           <div class="entry-add-btn-wrap"><button class="btn soft entry-add-btn" id="addEntryItemBtn">${ic('plus')}Adicionar Produto</button></div>
         </div>
         <div class="table-wrap entry-draft-table-wrap"><table class="table entry-draft-table"><thead><tr><th>Produto</th><th>Quantidade</th><th>Custo Unit.</th><th>Total</th><th>Ações</th></tr></thead><tbody>${draftRows}</tbody></table></div>
@@ -1296,6 +1436,12 @@ function renderEntradas(){
 
   $('#viewAllEntries').onclick=(e)=>{e.preventDefault();toast('A tabela já mostra as entradas mais recentes.');};
   $('#addSupplierBtn').onclick=(e)=>{e.preventDefault();const name=prompt('Digite o nome do novo fornecedor:');if(name){$('#entrySupplier').value=name.trim()}};
+  $('#newEntryProductBtn').onclick=(e)=>{e.preventDefault();entryNewProductForm()};
+  $('#entryProduct').onchange=()=>{
+    const state=captureEntryDraftFields();
+    const p=data.products.find(x=>x.id===$('#entryProduct').value);
+    if(p&&Number($('#entryCost').value||0)===0&&Number(p.cost||0)>0){$('#entryCost').value=Number(p.cost||0);state.itemCost=$('#entryCost').value}
+  };
   $('#addEntryItemBtn').onclick=()=>{
     const p=data.products.find(x=>x.id===$('#entryProduct').value);
     const qty=Math.max(0,Number($('#entryQty').value||0));
@@ -1304,6 +1450,7 @@ function renderEntradas(){
     if(!p||qty<=0)return toast('Selecione o produto e informe a quantidade.');
     const found=state.items.find(x=>x.id===p.id&&x.cost===cost);
     if(found)found.qty+=qty; else state.items.push({id:p.id,code:p.code,name:p.name,photo:p.photo||'',unit:productUnit(p),qty:Number(qty.toFixed(3)),cost});
+    state.selectedProductId='';state.itemQty='1';state.itemCost='0';
     renderEntradas();
   };
   $$('[data-draft-remove]').forEach(btn=>btn.onclick=()=>{state.items.splice(Number(btn.dataset.draftRemove),1);renderEntradas()});
@@ -1317,13 +1464,13 @@ function renderEntradas(){
       data.entries.push({id:uid('ENT'),nf:state.nf,date:state.date,supplier:state.supplier,product:item.name,productId:item.id,unit:item.unit||productUnit(p),qty:Number(item.qty||0),cost:Number(item.cost||0),status,obs:state.obs});
     });
     save();
-    renderEntradas.state={supplier:'',nf:'',date:today(),obs:'',items:[]};
+    renderEntradas.state={supplier:'',nf:'',date:today(),obs:'',items:[],selectedProductId:'',itemQty:'1',itemCost:'0'};
     renderEntradas();
     toast(status==='Recebida'?'Mercadorias recebidas e estoque atualizado.':'Nota lançada com sucesso.');
   };
   $('#launchEntryBtn').onclick=()=>saveDraft('Pendente');
   $('#receiveEntryBtn').onclick=()=>saveDraft('Recebida');
-  $('#clearEntryDraftBtn').onclick=()=>{renderEntradas.state={supplier:'',nf:'',date:today(),obs:'',items:[]};renderEntradas()};
+  $('#clearEntryDraftBtn').onclick=()=>{renderEntradas.state={supplier:'',nf:'',date:today(),obs:'',items:[],selectedProductId:'',itemQty:'1',itemCost:'0'};renderEntradas()};
   
   $$('[data-receive-entry]').forEach(b=>b.onclick=()=>receiveEntry(data.entries.find(e=>e.id===b.dataset.receiveEntry)));
   $$('[data-del-entry]').forEach(b=>b.onclick=()=>{

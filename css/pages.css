@@ -887,3 +887,10 @@ body{margin:0}
 #stockSearch{
   caret-color:#087247;
 }
+
+/* v1.15 - cadastro de produto direto pela aba Entradas */
+.entry-product-picker{align-items:stretch}
+.entry-product-picker select{flex:1;min-width:0}
+.entry-product-picker .btn{white-space:nowrap}
+.entry-field-help{display:block;margin-top:7px;color:#6f7f76;font-size:12px;line-height:1.35}
+@media(max-width:720px){.entry-product-picker{flex-direction:column}.entry-product-picker .btn{width:100%;justify-content:center}}
