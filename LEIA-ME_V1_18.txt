@@ -1,0 +1,18 @@
+D CHÁCARA AGROGESTÃO — v1.18
+
+NOVIDADES
+1. Ao tentar vender produto fracionado sem saldo aberto suficiente, aparece um card central perguntando se deseja abrir a quantidade necessária de embalagens.
+2. Ao confirmar, o sistema reduz o estoque fechado, aumenta o saldo fracionado e continua a venda automaticamente.
+3. Funciona também ao aumentar a quantidade de um item fracionado já colocado no carrinho.
+4. Indicadores agora mostram faturamento fracionado, faturamento por embalagem inteira, embalagens abertas no período e produtos com saldo aberto.
+5. Novo comparativo Inteiro x Fracionado, ranking de fracionados por faturamento e lista de saldos abertos.
+6. As unidades continuam descritivas: use rolo para tela, saco para ração/milho e un para itens genéricos.
+
+EXEMPLO TELA 50 m
+Unidade principal: rolo
+Estoque fechado: 1 rolo
+Quantidade por embalagem: 50
+Unidade fracionada: m
+Saldo aberto: 0
+Preço por rolo: R$ 500
+Preço por metro: R$ 12

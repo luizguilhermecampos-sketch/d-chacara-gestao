@@ -211,16 +211,42 @@ const productSaleUnits=p=>productHasFraction(p)?[
   {mode:'fraction',unit:String(p.fractionUnit||'kg'),price:Number(p.fractionPrice||0),available:Number(p.fractionStock||0)}
 ]:[{mode:'package',unit:productUnit(p),price:Number(p.price||0),available:Number(p.stock||0)}];
 const productStockSummary=p=>productHasFraction(p)?`${qtyLabel(p.stock,productUnit(p))} fechados + ${qtyLabel(p.fractionStock,p.fractionUnit)} aberto`:`${qtyLabel(p.stock,productUnit(p))}`;
-function openPackage(productId){
+function openPackages(productId,count=1,{silent=false}={}){
   const p=data.products.find(x=>x.id===productId);
-  if(!p||!productHasFraction(p))return toast('Este produto não está configurado para venda fracionada.');
-  if(Number(p.stock||0)<1)return toast(`Não há ${productUnit(p)} fechado disponível para abrir.`);
-  p.stock=Number(p.stock||0)-1;
-  p.fractionStock=Number((Number(p.fractionStock||0)+Number(p.packageSize||0)).toFixed(3));
-  data.stockAdjustments.push({id:uid('AJE'),date:now(),productId:p.id,product:p.name,type:'abrir_embalagem',qty:1,reason:`1 ${productUnit(p)} convertido em ${qtyLabel(p.packageSize,p.fractionUnit)}`});
+  if(!p||!productHasFraction(p)){if(!silent)toast('Este produto não está configurado para venda fracionada.');return false}
+  count=Math.max(1,Math.floor(Number(count||1)));
+  if(Number(p.stock||0)<count){if(!silent)toast(`Não há ${count} ${productUnit(p)} fechado(s) disponível(is) para abrir.`);return false}
+  p.stock=Number((Number(p.stock||0)-count).toFixed(3));
+  p.fractionStock=Number((Number(p.fractionStock||0)+(Number(p.packageSize||0)*count)).toFixed(3));
+  data.stockAdjustments.push({id:uid('AJE'),date:now(),productId:p.id,product:p.name,type:'abrir_embalagem',qty:count,reason:`${count} ${productUnit(p)} convertido(s) em ${qtyLabel(Number(p.packageSize||0)*count,p.fractionUnit)}`});
   save();
-  toast(`${p.name}: 1 ${productUnit(p)} aberto. Saldo fracionado: ${qtyLabel(p.fractionStock,p.fractionUnit)}.`);
+  if(!silent)toast(`${p.name}: ${count} ${productUnit(p)} aberto(s). Saldo fracionado: ${qtyLabel(p.fractionStock,p.fractionUnit)}.`);
   if(page==='estoque')renderEstoque();
+  return true;
+}
+function openPackage(productId){return openPackages(productId,1)}
+function requestOpenPackagesForSale(productId,desiredQty,onReady){
+  const p=data.products.find(x=>x.id===productId);
+  if(!p||!productHasFraction(p))return false;
+  const desired=Math.max(0,Number(desiredQty||0));
+  const open=Number(p.fractionStock||0);
+  if(desired<=open+1e-9){onReady?.();return true}
+  const deficit=desired-open;
+  const packageSize=Number(p.packageSize||0);
+  const needed=Math.max(1,Math.ceil((deficit-1e-9)/packageSize));
+  const closed=Number(p.stock||0);
+  const totalAvailable=open+(closed*packageSize);
+  if(desired>totalAvailable+1e-9){toast(`Estoque total insuficiente. Disponível: ${qtyLabel(totalAvailable,p.fractionUnit)} (${qtyLabel(open,p.fractionUnit)} aberto + ${qtyLabel(closed,productUnit(p))} fechado).`);return false}
+  const photo=p.photo?`<img class="fraction-open-photo" src="${p.photo}" alt="">`:`<div class="fraction-open-icon">${ic('box')}</div>`;
+  modal(`<div class="fraction-open-prompt">${photo}<div class="fraction-open-copy"><span class="fraction-open-tag">VENDA FRACIONADA</span><h3>Abrir ${needed} ${esc(productUnit(p))}?</h3><p>Você pediu <strong>${qtyLabel(desired,p.fractionUnit)}</strong> de <strong>${esc(p.name)}</strong>, mas há apenas <strong>${qtyLabel(open,p.fractionUnit)}</strong> aberto.</p><div class="fraction-open-conversion"><b>${needed} ${esc(productUnit(p))}</b><span>será convertido em</span><b>${qtyLabel(needed*packageSize,p.fractionUnit)}</b></div><small>Após abrir, o saldo fechado diminui e o saldo fracionado aumenta automaticamente.</small></div><div class="fraction-open-actions"><button class="btn outline" id="cancelAutoOpen">Cancelar</button><button class="btn primary" id="confirmAutoOpen">${ic('check')} Abrir e continuar</button></div></div>`);
+  $('#cancelAutoOpen').onclick=closeModal;
+  $('#confirmAutoOpen').onclick=()=>{
+    if(!openPackages(p.id,needed,{silent:true}))return;
+    closeModal();
+    toast(`${needed} ${productUnit(p)} aberto(s) para a venda.`);
+    onReady?.();
+  };
+  return false;
 }
 function lineUsesFraction(line,p){return line?.stockMode==='fraction'||(!line?.stockMode&&productHasFraction(p)&&String(line?.unit||'')===String(p.fractionUnit||''));}
 function restoreSaleLineStock(line){
@@ -990,13 +1016,14 @@ function renderVendas(){
     if($('#clientSelected'))$('#clientSelected').innerHTML=selectedClient?`<div class="selected-client compact"><div class="selected-client-icon">${ic('users')}</div><div><strong>${esc(clientName(selectedClient))}</strong><small>Cliente selecionado para esta venda</small></div><button class="icon-btn" id="clearSaleClient">${ic('x')}</button></div>`:'';
     if($('#clearSaleClient'))$('#clearSaleClient').onclick=()=>{selectedClient='';$('#clientSelect').value='';draw()};
     $$('#pdvCart [data-rm]').forEach(b=>b.onclick=()=>{cart.splice(Number(b.dataset.rm),1);draw()});
-    $$('#pdvCart [data-inc]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.inc);const step=isFractionalUnit(cart[i].unit)?0.1:1;if(cart[i].qty+step<=cart[i].available+1e-9)cart[i].qty=Number((cart[i].qty+step).toFixed(3));draw()});
+    $$('#pdvCart [data-inc]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.inc),item=cart[i];const step=isFractionalUnit(item.unit)?0.1:1;const desired=Number((item.qty+step).toFixed(3));const apply=()=>{const p=data.products.find(x=>x.id===item.id);const choice=productSaleUnits(p).find(x=>x.mode===item.stockMode);item.available=choice?.available??item.available;if(desired<=item.available+1e-9){item.qty=desired;draw()}};if(item.stockMode==='fraction'&&desired>item.available+1e-9){requestOpenPackagesForSale(item.id,desired,apply);return}apply()});
     $$('#pdvCart [data-dec]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.dec);const step=isFractionalUnit(cart[i].unit)?0.1:1;const min=isFractionalUnit(cart[i].unit)?0.001:1;if(cart[i].qty-step>=min-1e-9)cart[i].qty=Number((cart[i].qty-step).toFixed(3));draw()});
     $$('#pdvCart [data-cart-qty]').forEach(el=>el.onchange=()=>{
       const i=Number(el.dataset.cartQty),item=cart[i],min=isFractionalUnit(item.unit)?0.001:1;
-      const q=Math.max(min,Number(el.value||min));
-      if(q>Number(item.available||0)){toast('Quantidade maior que o estoque disponível.');el.value=item.qty;return}
-      item.qty=Number(q.toFixed(3));draw();
+      const q=Number(Math.max(min,Number(el.value||min)).toFixed(3));
+      const apply=()=>{const p=data.products.find(x=>x.id===item.id);const choice=productSaleUnits(p).find(x=>x.mode===item.stockMode);item.available=choice?.available??item.available;if(q>Number(item.available||0)+1e-9){toast('Quantidade maior que o estoque disponível.');el.value=item.qty;return}item.qty=q;draw()};
+      if(item.stockMode==='fraction'&&q>Number(item.available||0)+1e-9){el.value=item.qty;requestOpenPackagesForSale(item.id,q,apply);return}
+      apply();
     });
     $$('#pdvCart [data-price]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.price)].price=Math.max(0,Number(el.value||0));draw()});
     $$('#pdvCart [data-discount]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.discount)].discount=Math.max(0,Number(el.value||0));draw()});
@@ -1010,16 +1037,23 @@ function renderVendas(){
   const addProduct=()=>{
     const p=findProduct($('#productSearch').value);
     if(!p)return toast('Selecione um produto cadastrado.');
-    const choices=productSaleUnits(p);
-    const choice=choices.find(x=>x.mode===quickSaleMode)||choices[0];
-    const minQty=isFractionalUnit(choice.unit)?0.001:1;
+    const initialChoices=productSaleUnits(p);
+    const initialChoice=initialChoices.find(x=>x.mode===quickSaleMode)||initialChoices[0];
+    const mode=initialChoice.mode;
+    const minQty=isFractionalUnit(initialChoice.unit)?0.001:1;
     const qty=Math.max(minQty,Number($('#quickQty').value||minQty));
-    const key=`${p.id}:${choice.mode}`;
+    const key=`${p.id}:${mode}`;
     const current=cart.find(x=>x.cartKey===key),already=current?current.qty:0;
-    if(already+qty>Number(choice.available||0)+1e-9)return toast(`Quantidade maior que o estoque disponível (${qtyLabel(choice.available,choice.unit)}).`);
-    if(current){current.qty=Number((current.qty+qty).toFixed(3));current.available=choice.available;}
-    else cart.push({...p,cartKey:key,stockMode:choice.mode,unit:choice.unit,available:choice.available,qty:Number(qty.toFixed(3)),price:choice.price,discount:0});
-    $('#productSearch').value='';$('#quickQty').value=1;quickSaleMode='package';draw();
+    const desired=already+qty;
+    const commit=()=>{
+      const choice=productSaleUnits(p).find(x=>x.mode===mode)||productSaleUnits(p)[0];
+      if(desired>Number(choice.available||0)+1e-9)return toast(`Quantidade maior que o estoque disponível (${qtyLabel(choice.available,choice.unit)}).`);
+      if(current){current.qty=Number(desired.toFixed(3));current.available=choice.available;}
+      else cart.push({...p,cartKey:key,stockMode:choice.mode,unit:choice.unit,available:choice.available,qty:Number(qty.toFixed(3)),price:choice.price,discount:0});
+      $('#productSearch').value='';$('#quickQty').value=1;quickSaleMode='package';draw();
+    };
+    if(mode==='fraction'&&desired>Number(initialChoice.available||0)+1e-9){requestOpenPackagesForSale(p.id,desired,commit);return}
+    commit();
   };
   const recentRows=data.sales.slice().reverse().slice(0,6).map((s,i)=>`<tr><td>${esc(String(s.id).slice(-4))}</td><td>${esc(s.client||'Sem cliente')}</td><td>${s.items||0}</td><td>${money(s.total)}</td><td>${esc(salePaymentLabel(s))}</td><td><div class="sale-row-actions"><button class="icon-btn" data-print-sale="${s.id}" title="Imprimir comprovante">${ic('report')}</button><button class="icon-btn" data-edit-sale="${s.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-delete-sale="${s.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('');
   $('#page').innerHTML=`<div class="pdv-layout"><section class="pdv-main">
@@ -1056,7 +1090,7 @@ function renderVendas(){
     <div class="card pdv-recent"><div class="pdv-side-title small">${ic('report')} <h2>Últimas vendas</h2></div><div class="pdv-recent-wrap"><table><thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pgto.</th><th>Ações</th></tr></thead><tbody>${recentRows||`<tr><td colspan="6">Nenhuma venda ainda.</td></tr>`}</tbody></table></div></div>
   </aside></div>`;
   $('#addProductBtn').onclick=addProduct;
-  const syncQuickUnit=()=>{const p=findProduct($('#productSearch').value);const sel=$('#quickSaleUnit');if(!p){sel.innerHTML='<option value="package">un</option>';quickSaleMode='package';return;}const choices=productSaleUnits(p);sel.innerHTML=choices.map(c=>`<option value="${c.mode}">${esc(c.unit)} • ${c.mode==='fraction'?'fracionado':'inteiro'} • ${money(c.price)} • disp. ${qtyLabel(c.available,c.unit)}</option>`).join('');let c=choices.find(x=>x.mode===quickSaleMode&&x.available>0)||choices.find(x=>x.available>0)||choices[0];quickSaleMode=c.mode;sel.value=quickSaleMode;$('#quickQty').step=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').min=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').value=isFractionalUnit(c.unit)?'0.5':'1';};
+  const syncQuickUnit=()=>{const p=findProduct($('#productSearch').value);const sel=$('#quickSaleUnit');if(!p){sel.innerHTML='<option value="package">un</option>';quickSaleMode='package';return;}const choices=productSaleUnits(p);sel.innerHTML=choices.map(c=>{const canOpen=c.mode==='fraction'&&Number(c.available||0)<=0&&Number(p.stock||0)>0;return `<option value="${c.mode}">${esc(c.unit)} • ${c.mode==='fraction'?'fracionado':'inteiro'} • ${money(c.price)} • disp. ${qtyLabel(c.available,c.unit)}${canOpen?' • abrir '+qtyLabel(p.packageSize,p.fractionUnit):''}</option>`}).join('');let c=choices.find(x=>x.mode===quickSaleMode)||choices.find(x=>x.available>0)||choices[0];quickSaleMode=c.mode;sel.value=quickSaleMode;$('#quickQty').step=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').min=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').value=isFractionalUnit(c.unit)?'0.5':'1';};
 
   const suggestionBox=$('#productSuggestions');
   const renderProductSuggestions=()=>{
@@ -1973,6 +2007,17 @@ function renderIndicadores(){
   const openDebt=data.debts.filter(d=>Number(d.balance||0)>0).reduce((s,d)=>s+Number(d.balance||0),0);
   const stockValue=data.products.reduce((s,p)=>s+(Number(p.stock||0)*Number(p.cost||0))+(productHasFraction(p)&&Number(p.packageSize||0)>0?(Number(p.fractionStock||0)/Number(p.packageSize||1))*Number(p.cost||0):0),0);
   const lowStock=data.products.filter(p=>Number(p.stock||0)<=Number(p.min||0)).length;
+  const fractionalSales=filteredSales.filter(s=>(s.lines||[]).some(l=>l.stockMode==='fraction'));
+  const fractionalLines=filteredSales.flatMap(s=>(s.lines||[]).filter(l=>l.stockMode==='fraction').map(l=>({...l,saleId:s.id,date:s.date})));
+  const packageLines=filteredSales.flatMap(s=>(s.lines||[]).filter(l=>l.stockMode!=='fraction').map(l=>({...l,saleId:s.id,date:s.date})));
+  const fractionalRevenue=fractionalLines.reduce((sum,l)=>sum+analyticsSaleRevenue(l),0);
+  const packageRevenue=packageLines.reduce((sum,l)=>sum+analyticsSaleRevenue(l),0);
+  const openedInPeriod=(data.stockAdjustments||[]).filter(a=>a.type==='abrir_embalagem'&&analyticsInRange(a.date,state.start,state.end));
+  const openedPackages=openedInPeriod.reduce((sum,a)=>sum+Number(a.qty||0),0);
+  const productsWithOpenStock=data.products.filter(p=>productHasFraction(p)&&Number(p.fractionStock||0)>0);
+  const fractionProductMap={};
+  fractionalLines.forEach(l=>{const key=l.productId||l.name;if(!fractionProductMap[key])fractionProductMap[key]={label:l.name||'Produto',value:0,qty:0,unit:l.unit||''};fractionProductMap[key].value+=analyticsSaleRevenue(l);fractionProductMap[key].qty+=Number(l.qty||0)});
+  const topFractionProducts=Object.values(fractionProductMap).sort((a,b)=>b.value-a.value).slice(0,6).map(x=>({label:x.label,value:x.value,sub:`${qtyLabel(x.qty,x.unit)} vendidos`}));
 
   const monthKeys=[];
   for(let i=5;i>=0;i--){
@@ -2061,6 +2106,19 @@ function renderIndicadores(){
     <article class="card analytics-kpi"><div class="analytics-kpi-icon amber">${ic('users')}</div><div><small>Fiados em Aberto</small><strong>${money(openDebt)}</strong><span>A receber atualmente</span></div></article>
     <article class="card analytics-kpi"><div class="analytics-kpi-icon purple">${ic('box')}</div><div><small>Valor do Estoque</small><strong>${money(stockValue)}</strong><span>${lowStock} item(ns) em baixo estoque</span></div></article>
     <article class="card analytics-kpi"><div class="analytics-kpi-icon teal">${ic('tray')}</div><div><small>Entradas</small><strong>${money(entries.reduce((s,e)=>s+Number(e.qty||0)*Number(e.cost||0),0))}</strong><span>${entries.length} lançamento(s)</span></div></article>
+  </div>
+
+  <div class="analytics-fraction-grid">
+    <article class="card analytics-kpi fraction-highlight"><div class="analytics-kpi-icon green">${ic('chart')}</div><div><small>Faturamento Fracionado</small><strong>${money(fractionalRevenue)}</strong><span>${fractionalSales.length} venda(s) com item fracionado</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon blue">${ic('box')}</div><div><small>Embalagens Abertas</small><strong>${analyticsFmt(openedPackages)}</strong><span>${openedInPeriod.length} movimentação(ões) no período</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon amber">${ic('tray')}</div><div><small>Produtos com Saldo Aberto</small><strong>${productsWithOpenStock.length}</strong><span>Produtos com kg/m/L disponíveis</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon purple">${ic('wallet')}</div><div><small>Faturamento Embalagem Inteira</small><strong>${money(packageRevenue)}</strong><span>Vendas sem fracionamento</span></div></article>
+  </div>
+
+  <div class="analytics-grid-3 analytics-fraction-section">
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Inteiro x Fracionado</h2><p>Comparação do faturamento por forma de saída.</p></div></div>${analyticsHorizontalBars([{label:'Embalagem inteira',value:packageRevenue},{label:'Fracionado',value:fractionalRevenue}],money)}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Fracionados Mais Vendidos</h2><p>Ranking por faturamento, sem misturar kg com metros.</p></div></div>${analyticsHorizontalBars(topFractionProducts,money)}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Saldos Abertos</h2><p>O que já foi aberto e ainda está disponível.</p></div></div><div class="analytics-summary-list fraction-open-list">${productsWithOpenStock.slice(0,6).map(p=>`<div><span>${ic('box')} ${esc(p.name)}</span><b>${qtyLabel(p.fractionStock,p.fractionUnit)}</b></div>`).join('')||'<div class="analytics-empty">Nenhum produto com saldo aberto.</div>'}</div></div>
   </div>
 
   <div class="analytics-row analytics-row-main">
