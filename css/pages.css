@@ -907,3 +907,74 @@ body{margin:0}
 .analytics-fraction-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:14px 0}.analytics-fraction-section{margin-top:14px}.fraction-highlight{border-color:#b9dec7;background:linear-gradient(180deg,#fff,#f7fcf9)}.fraction-open-list>div{gap:12px}.fraction-open-list span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fraction-open-list b{white-space:nowrap;color:#087649}
 @media(max-width:1100px){.analytics-fraction-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){.fraction-open-prompt{grid-template-columns:1fr}.fraction-open-photo,.fraction-open-icon{width:78px;height:78px}.fraction-open-actions{grid-column:1}.analytics-fraction-grid{grid-template-columns:1fr}}
+
+/* v1.19 - melhora visual do seletor quantidade / forma de venda */
+body[data-page="vendas"] .pdv-product-line{
+  grid-template-columns:minmax(320px,1fr) minmax(290px,330px) 160px!important;
+  gap:12px!important;
+  align-items:end!important;
+}
+body[data-page="vendas"] .pdv-quick-qty{
+  min-width:0!important;
+}
+body[data-page="vendas"] .pdv-qty-control{
+  width:100%!important;
+  height:44px!important;
+  display:grid!important;
+  grid-template-columns:72px minmax(0,1fr)!important;
+  gap:0!important;
+  padding:0!important;
+  overflow:visible!important;
+  border:1px solid #d2dfd6!important;
+  border-radius:12px!important;
+  background:#fff!important;
+}
+body[data-page="vendas"] .pdv-qty-control input{
+  min-width:0!important;
+  width:100%!important;
+  padding:0 8px!important;
+  border:0!important;
+  border-right:1px solid #dce7df!important;
+  border-radius:12px 0 0 12px!important;
+  text-align:center!important;
+}
+body[data-page="vendas"] .pdv-qty-control .pdv-unit-select{
+  min-width:0!important;
+  width:100%!important;
+  height:42px!important;
+  padding:0 30px 0 12px!important;
+  border:0!important;
+  border-left:0!important;
+  border-radius:0 12px 12px 0!important;
+  background-color:#f8fbf9!important;
+  color:#0a7045!important;
+  font-size:11px!important;
+  font-weight:850!important;
+  cursor:pointer!important;
+  text-overflow:ellipsis!important;
+}
+body[data-page="vendas"] .pdv-launch-product{
+  min-width:160px!important;
+  max-width:none!important;
+  width:160px!important;
+}
+@media(max-width:1180px){
+  body[data-page="vendas"] .pdv-product-line{
+    grid-template-columns:minmax(260px,1fr) minmax(260px,310px)!important;
+  }
+  body[data-page="vendas"] .pdv-launch-product{
+    grid-column:2!important;
+    width:160px!important;
+    justify-self:end!important;
+  }
+}
+@media(max-width:820px){
+  body[data-page="vendas"] .pdv-product-line{
+    grid-template-columns:1fr!important;
+  }
+  body[data-page="vendas"] .pdv-launch-product{
+    grid-column:1!important;
+    width:100%!important;
+    max-width:none!important;
+  }
+}

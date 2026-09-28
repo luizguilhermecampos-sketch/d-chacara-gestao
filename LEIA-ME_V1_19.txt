@@ -1,0 +1,8 @@
+D Chácara AgroGestão v1.19
+
+Melhoria visual na tela de Vendas:
+- Campo "Quantidade / forma de venda" mais largo.
+- Quantidade e forma de venda separadas visualmente dentro do mesmo bloco.
+- Opções como "rolo inteiro" e "m fracionado" passam a ter espaço para leitura.
+- Botão "Lançar produto" não comprime mais o seletor.
+- Layout responsivo: em telas menores os elementos quebram de linha em vez de ficarem ocultos.
