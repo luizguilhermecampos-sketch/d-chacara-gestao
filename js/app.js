@@ -1449,7 +1449,22 @@ function renderDespesas(){
   $('#expenseCategoryFilter').onchange=applyExpenseFilters;
   $('#expenseStatusFilter').onchange=applyExpenseFilters;
   let expenseSearchTimer;
-  $('#expenseSearch').oninput=e=>{clearTimeout(expenseSearchTimer);expenseSearchTimer=setTimeout(()=>{renderDespesas.state={...state,search:e.target.value};renderDespesas()},250)};
+  $('#expenseSearch').oninput=e=>{
+    const value=e.target.value;
+    const cursor=e.target.selectionStart??value.length;
+    clearTimeout(expenseSearchTimer);
+    expenseSearchTimer=setTimeout(()=>{
+      renderDespesas.state={...state,search:value};
+      renderDespesas();
+      requestAnimationFrame(()=>{
+        const input=$('#expenseSearch');
+        if(!input)return;
+        input.focus({preventScroll:true});
+        const pos=Math.min(cursor,input.value.length);
+        try{input.setSelectionRange(pos,pos)}catch{}
+      });
+    },250);
+  };
   $('#expenseNewQuick').onclick=()=>expenseForm();
   $('#expenseAttachQuick').onclick=()=>openExpenseAttachmentModal();
   $('#expenseExportQuick').onclick=()=>downloadCSV('despesas.csv',['Data','Categoria','Descrição','Fornecedor','Pagamento','Valor','Status'],filtered.map(e=>[e.date,e.category,e.description,e.supplier,e.payment,e.value,e.status]));
@@ -1594,7 +1609,24 @@ function renderFiados(){
     <aside class="card debt-client-card">${selectedClient?`<div class="debt-client-head"><div class="client-avatar-lg">${clientInitials(selectedClient.name)}</div><div><h2>${esc(selectedClient.name)}</h2><span class="client-active-badge">Cliente ativo</span></div></div><div class="client-contact-list"><div>${ic('users')}<span>${esc(formatPhoneBR(selectedClient.phone))}</span></div><div>${ic('report')}<span>${esc(selectedClient.email||'-')}</span></div><div>${ic('report')}<span>${esc(selectedClient.document||'-')}</span></div><div>${ic('report')}<span>${esc(selectedClient.city||'-')}</span></div></div><div class="client-debt-summary"><div class="danger"><small>Total em Aberto</small><strong>${money(selectedTotal)}</strong></div><div class="danger"><small>Em Atraso</small><strong>${money(selectedLate)}</strong></div><div class="success"><small>A Vencer</small><strong>${money(selectedSoon)}</strong></div></div><div class="client-debt-actions"><button class="btn primary" id="paySelectedClient">${ic('wallet')}Registrar Pagamento</button><button class="btn outline" id="newSelectedDebt">${ic('cart')}Nova Venda Fiada</button><button class="btn outline" id="editSelectedClient">${ic('edit')}Editar Cliente</button><a class="btn outline" href="clientes.html">${ic('users')}Ver Cadastro</a></div><div class="client-history-tabs"><button class="active">Compras Fiadas em Aberto</button></div><div class="client-sale-lines">${selectedOpen.slice(0,4).map(d=>{const s=data.sales.find(x=>x.id===d.saleId);return `<div class="client-sale-line"><div><strong>${esc(s?String(s.id).slice(-6):'Fiado')}</strong><small>${esc((s?.lines||[]).map(l=>`${l.qty}x ${l.name}`).join(', ')||d.description||'Venda fiada')}</small></div><span>${money(d.balance)}</span></div>`}).join('')||'<div class="small-empty">Nenhuma compra fiada em aberto.</div>'}</div><div class="client-history-tabs"><button class="active">Histórico de Pagamentos</button></div><div class="client-payment-history">${payments.slice(0,6).map(p=>`<div class="payment-history-row"><span>${esc(p.date||'-')}</span><span>${esc(p.method||'Pagamento')}</span><strong>${money(p.value)}</strong></div>`).join('')||'<div class="small-empty">Nenhum pagamento registrado.</div>'}</div>`:`<div class="empty client-detail-empty">Cadastre um cliente para começar a controlar os fiados.</div>`}</aside>
   </div>`;
   $('#newDebt').onclick=()=>location.href='vendas.html';
-  $('#debtSearch').oninput=e=>{state.search=e.target.value;state.page=1;renderFiados()};
+  let debtSearchTimer;
+  $('#debtSearch').oninput=e=>{
+    const value=e.target.value;
+    const cursor=e.target.selectionStart??value.length;
+    state.search=value;
+    state.page=1;
+    clearTimeout(debtSearchTimer);
+    debtSearchTimer=setTimeout(()=>{
+      renderFiados();
+      requestAnimationFrame(()=>{
+        const input=$('#debtSearch');
+        if(!input)return;
+        input.focus({preventScroll:true});
+        const pos=Math.min(cursor,input.value.length);
+        try{input.setSelectionRange(pos,pos)}catch{}
+      });
+    },180);
+  };
   $('#debtStatus').onchange=e=>{state.status=e.target.value;state.page=1;renderFiados()};
   $('#debtDue').onchange=e=>{state.due=e.target.value;state.page=1;renderFiados()};
   $$('[data-debt-page]').forEach(b=>b.onclick=()=>{state.page=+b.dataset.debtPage;renderFiados()});
