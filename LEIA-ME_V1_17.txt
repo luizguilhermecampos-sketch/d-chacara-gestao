@@ -1,0 +1,23 @@
+D CHÁCARA AGROGESTÃO - v1.17
+
+MELHORIAS DE ESTOQUE FRACIONADO
+
+1. Novas unidades de estoque/venda: un, saco, rolo, caixa, pacote, kg, g, L, mL e m.
+2. No cadastro de produto existe a opção "Venda fracionada".
+3. Para produtos fracionados, informar:
+   - unidade principal (ex.: saco ou rolo)
+   - quantidade por embalagem (ex.: 20 kg ou 50 m)
+   - unidade fracionada (ex.: kg ou m)
+   - preço por unidade fracionada
+4. A aba Estoque mostra separadamente o saldo fechado e o saldo aberto.
+5. O botão "Abrir" transforma 1 embalagem fechada em saldo fracionado.
+   Ex.: 17 sacos de milho de 20 kg -> Abrir -> 16 sacos + 20 kg abertos.
+6. Na Venda, o produto fracionado permite escolher embalagem inteira ou unidade fracionada.
+7. A baixa de estoque é feita no saldo correto (fechado ou aberto).
+8. Ao editar ou excluir uma venda, o saldo correto também é restaurado/recalculado.
+9. Cadastro de produto novo dentro da aba Entradas continua funcionando e agora também aceita produto fracionado.
+10. As melhorias anteriores de editar/excluir vendas finalizadas permanecem.
+
+EXEMPLOS
+Milho: unidade principal=saco, quantidade por embalagem=20, unidade fracionada=kg.
+Tela de galinheiro: unidade principal=rolo, quantidade por embalagem=50, unidade fracionada=m.

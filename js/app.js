@@ -178,7 +178,12 @@ function normalizeInventoryData(){
     cost:Number(p.cost||0),
     price:Number(p.price||0),
     photo:p.photo||'',
-    description:p.description||''
+    description:p.description||'',
+    fractional:!!p.fractional,
+    packageSize:Math.max(0,Number(p.packageSize||0)),
+    fractionUnit:String(p.fractionUnit||'kg'),
+    fractionStock:Math.max(0,Number(p.fractionStock||0)),
+    fractionPrice:Math.max(0,Number(p.fractionPrice||0))
   }));
   const fromProducts=data.products.map(p=>p.category).filter(Boolean);
   const base=Array.isArray(data.categories)&&data.categories.length?data.categories:INVENTORY_DEFAULT_CATEGORIES;
@@ -189,15 +194,48 @@ normalizeInventoryData();
 const inventoryCategories=()=>[...new Set((data.categories||[]).map(x=>String(x).trim()).filter(Boolean))];
 const inventorySuppliers=()=>[...new Set((data.products||[]).map(p=>String(p.supplier||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 
-const PRODUCT_UNITS=['un','kg','g','saco','L','mL'];
+const PRODUCT_UNITS=['un','saco','rolo','caixa','pacote','kg','g','L','mL','m'];
+const FRACTION_UNITS=['kg','g','L','mL','m','un'];
 const productUnit=p=>String(p?.unit||'un');
-const isFractionalUnit=u=>['kg','g','L','mL'].includes(String(u||''));
+const isFractionalUnit=u=>['kg','g','L','mL','m'].includes(String(u||''));
 const unitStep=p=>isFractionalUnit(productUnit(p))?'0.001':'1';
 const qtyLabel=(qty,unit='un')=>{
   const n=Number(qty||0);
   const formatted=n.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:3});
   return `${formatted} ${unit}`;
 };
+
+const productHasFraction=p=>!!p?.fractional&&Number(p?.packageSize||0)>0&&!!p?.fractionUnit;
+const productSaleUnits=p=>productHasFraction(p)?[
+  {mode:'package',unit:productUnit(p),price:Number(p.price||0),available:Number(p.stock||0)},
+  {mode:'fraction',unit:String(p.fractionUnit||'kg'),price:Number(p.fractionPrice||0),available:Number(p.fractionStock||0)}
+]:[{mode:'package',unit:productUnit(p),price:Number(p.price||0),available:Number(p.stock||0)}];
+const productStockSummary=p=>productHasFraction(p)?`${qtyLabel(p.stock,productUnit(p))} fechados + ${qtyLabel(p.fractionStock,p.fractionUnit)} aberto`:`${qtyLabel(p.stock,productUnit(p))}`;
+function openPackage(productId){
+  const p=data.products.find(x=>x.id===productId);
+  if(!p||!productHasFraction(p))return toast('Este produto não está configurado para venda fracionada.');
+  if(Number(p.stock||0)<1)return toast(`Não há ${productUnit(p)} fechado disponível para abrir.`);
+  p.stock=Number(p.stock||0)-1;
+  p.fractionStock=Number((Number(p.fractionStock||0)+Number(p.packageSize||0)).toFixed(3));
+  data.stockAdjustments.push({id:uid('AJE'),date:now(),productId:p.id,product:p.name,type:'abrir_embalagem',qty:1,reason:`1 ${productUnit(p)} convertido em ${qtyLabel(p.packageSize,p.fractionUnit)}`});
+  save();
+  toast(`${p.name}: 1 ${productUnit(p)} aberto. Saldo fracionado: ${qtyLabel(p.fractionStock,p.fractionUnit)}.`);
+  if(page==='estoque')renderEstoque();
+}
+function lineUsesFraction(line,p){return line?.stockMode==='fraction'||(!line?.stockMode&&productHasFraction(p)&&String(line?.unit||'')===String(p.fractionUnit||''));}
+function restoreSaleLineStock(line){
+  const p=data.products.find(x=>x.id===line.productId); if(!p)return;
+  if(lineUsesFraction(line,p))p.fractionStock=Number((Number(p.fractionStock||0)+Number(line.qty||0)).toFixed(3));
+  else p.stock=Number((Number(p.stock||0)+Number(line.qty||0)).toFixed(3));
+}
+function deductSaleLineStock(line){
+  const p=data.products.find(x=>x.id===line.productId); if(!p)return {ok:true};
+  const bucket=lineUsesFraction(line,p)?'fractionStock':'stock';
+  const available=Number(p[bucket]||0), qty=Number(line.qty||0);
+  if(qty>available+1e-9)return {ok:false,name:p.name,available,unit:line.unit||productUnit(p)};
+  p[bucket]=Number((available-qty).toFixed(3));
+  return {ok:true};
+}
 
 const inventoryStatus=p=>Number(p.stock||0)<=Number(p.min||0)?'Baixo Estoque':'Normal';
 const inventoryMovesToday=()=>{
@@ -207,7 +245,7 @@ const inventoryMovesToday=()=>{
   const adjustments=(data.stockAdjustments||[]).filter(a=>String(a.date||'').slice(0,10)===day).length;
   return entries+sales+adjustments;
 };
-function exportInventoryCSV(rows){downloadCSV('estoque.csv',['Código','Produto','Categoria','Marca','Unidade','Estoque Atual','Estoque Mínimo','Fornecedor','Custo Unit.','Preço Venda','Status'],rows.map(p=>[p.code||p.id,p.name,p.category||'',p.brand||'',productUnit(p),p.stock||0,p.min||0,p.supplier||'',p.cost||0,p.price||0,inventoryStatus(p)]))}
+function exportInventoryCSV(rows){downloadCSV('estoque.csv',['Código','Produto','Categoria','Marca','Unidade Principal','Estoque Fechado','Venda Fracionada','Qtd por Embalagem','Unidade Fracionada','Saldo Aberto','Estoque Mínimo','Fornecedor','Custo Unit.','Preço Embalagem','Preço Fracionado','Status'],rows.map(p=>[p.code||p.id,p.name,p.category||'',p.brand||'',productUnit(p),p.stock||0,p.fractional?'Sim':'Não',p.packageSize||0,p.fractionUnit||'',p.fractionStock||0,p.min||0,p.supplier||'',p.cost||0,p.price||0,p.fractionPrice||0,inventoryStatus(p)]))}
 function parseSimpleCSV(text){
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
   if(!lines.length)return[];
@@ -289,9 +327,16 @@ function productForm(product=null){
         </label>
 
         <label>Fornecedor<input id="pSupplier" value="${esc(product?.supplier||'')}" placeholder="Fornecedor"></label>
-        <label>Unidade de venda
+        <label>Unidade principal
           <select id="pUnit">${PRODUCT_UNITS.map(u=>`<option value="${u}" ${u===productUnit(product)?'selected':''}>${u}</option>`).join('')}</select>
         </label>
+        <label class="full fraction-toggle-label"><span>Venda fracionada</span><div class="fraction-toggle"><input id="pFractional" type="checkbox" ${product?.fractional?'checked':''}><div><strong>Permitir vender parte da embalagem</strong><small>Ex.: saco por kg ou rolo por metro.</small></div></div></label>
+        <div id="pFractionFields" class="full fraction-fields">
+          <label>Quantidade por embalagem<input id="pPackageSize" type="number" min="0.001" step="0.001" value="${Number(product?.packageSize||0)}" placeholder="Ex.: 20"></label>
+          <label>Unidade fracionada<select id="pFractionUnit">${FRACTION_UNITS.map(u=>`<option value="${u}" ${u===String(product?.fractionUnit||'kg')?'selected':''}>${u}</option>`).join('')}</select></label>
+          <label>Saldo aberto<input id="pFractionStock" type="number" min="0" step="0.001" value="${Number(product?.fractionStock||0)}"></label>
+          <label>Preço por unidade fracionada<input id="pFractionPrice" type="number" min="0" step="0.01" value="${Number(product?.fractionPrice||0)}" placeholder="Ex.: preço por kg/m"></label>
+        </div>
 
         <label class="stock-highlight-field">
           <span>Estoque atual</span>
@@ -334,6 +379,8 @@ function productForm(product=null){
     $('#pMinUnit').textContent=unit;
   };
   $('#pUnit').addEventListener('change',syncProductUnit);
+  const syncFractionFields=()=>{$('#pFractionFields').hidden=!$('#pFractional').checked;};
+  $('#pFractional').addEventListener('change',syncFractionFields); syncFractionFields();
 
   $('#cancelProduct').onclick=closeModal;
 
@@ -378,8 +425,14 @@ function productForm(product=null){
       cost:Math.max(0,Number($('#pCost').value||0)),
       price:Math.max(0,Number($('#pPrice').value||0)),
       photo,
-      description:$('#pDescription').value.trim()
+      description:$('#pDescription').value.trim(),
+      fractional:$('#pFractional').checked,
+      packageSize:$('#pFractional').checked?Math.max(0,Number($('#pPackageSize').value||0)):0,
+      fractionUnit:$('#pFractionUnit').value||'kg',
+      fractionStock:$('#pFractional').checked?Math.max(0,Number($('#pFractionStock').value||0)):0,
+      fractionPrice:$('#pFractional').checked?Math.max(0,Number($('#pFractionPrice').value||0)):0
     });
+    if(obj.fractional&&obj.packageSize<=0){saveBtn.disabled=false;saveBtn.textContent=editing?'Salvar alterações':'Salvar produto';return toast('Informe quanto existe em cada embalagem para permitir venda fracionada.');}
 
     console.info('[D Chácara] Salvando produto',{id:obj.id,nome:obj.name,estoque:obj.stock,unidade:obj.unit,foto:!!obj.photo});
 
@@ -522,7 +575,7 @@ function renderDashboard(){
   const pendingDebts = data.debts.filter(d=>d.status!=='Pago');
   const d = dailySales().slice(-30);
   const latestSalesRows = data.sales.slice().reverse().slice(0,5).map((s,i)=>`<tr><td>${esc(String(s.id).slice(-4))}</td><td>${esc((s.date||'').replace('T',' ').slice(0,16))}</td><td>${esc(s.client||'-')}</td><td>${s.items||0}</td><td>${money(s.total)}</td><td>${esc(s.payment||'-')}</td><td>${badge('Concluída')}</td></tr>`);
-  const lowStockRows = lowProducts.slice(0,5).map(p=>`<tr><td>${p.photo?`<div class="product-cell"><img class="thumb" src="${p.photo}"><span>${esc(p.name)}</span></div>`:esc(p.name)}</td><td class="txt-warn">${p.stock} un</td><td>${p.min}</td></tr>`);
+  const lowStockRows = lowProducts.slice(0,5).map(p=>`<tr><td>${p.photo?`<div class="product-cell"><img class="thumb" src="${p.photo}"><span>${esc(p.name)}</span></div>`:esc(p.name)}</td><td class="txt-warn">${esc(productStockSummary(p))}</td><td>${qtyLabel(p.min,productUnit(p))}</td></tr>`);
   const debtRows = pendingDebts.slice(0,5).map(d=>`<tr><td>${esc(clientName(d.clientId))}</td><td>${money(d.balance)}</td><td>${esc(d.due||'-')}</td><td><span class="days-pill">${d.due?Math.max(0,Math.ceil((new Date(d.due+'T23:59:59')-new Date())/86400000))+' dias':'-'}</span></td></tr>`);
   $('#page').innerHTML=`
   <div class="grid kpis kpis-home">
@@ -560,21 +613,16 @@ function saleDebt(saleId){return data.debts.find(d=>d.saleId===saleId)||null}
 function syncSaleFromDebt(d){if(!d?.saleId)return;const s=data.sales.find(x=>x.id===d.saleId);if(!s)return;const paid=Math.max(0,Number(d.value||0)-Number(d.balance||0));s.receivedAmount=paid;s.financialStatus=Number(d.balance||0)<=0?'Recebida':paid>0?'Parcial':'Em aberto';}
 
 function restoreSaleStock(sale){
-  (sale?.lines||[]).forEach(line=>{
-    const p=data.products.find(x=>x.id===line.productId);
-    if(p)p.stock=Number(p.stock||0)+Number(line.qty||0);
-  });
+  (sale?.lines||[]).forEach(restoreSaleLineStock);
 }
 function applySaleStock(lines){
   for(const line of (lines||[])){
-    const p=data.products.find(x=>x.id===line.productId);
-    if(!p)continue;
-    if(Number(line.qty||0)>Number(p.stock||0))return {ok:false,name:p.name,available:Number(p.stock||0)};
+    const p=data.products.find(x=>x.id===line.productId); if(!p)continue;
+    const bucket=lineUsesFraction(line,p)?'fractionStock':'stock';
+    const available=Number(p[bucket]||0);
+    if(Number(line.qty||0)>available+1e-9)return {ok:false,name:p.name,available,unit:line.unit||productUnit(p)};
   }
-  (lines||[]).forEach(line=>{
-    const p=data.products.find(x=>x.id===line.productId);
-    if(p)p.stock=Number(p.stock||0)-Number(line.qty||0);
-  });
+  for(const line of (lines||[]))deductSaleLineStock(line);
   return {ok:true};
 }
 function saleDebt(saleId){return data.debts.find(d=>d.saleId===saleId)}
@@ -920,7 +968,8 @@ function renderVendas(){
   let selectedClient='';
   let payment=paymentDefs[0]?.name||'';
   let cardType='Crédito';
-  const productsAvailable=()=>data.products.filter(p=>Number(p.stock||0)>0);
+  let quickSaleMode='package';
+  const productsAvailable=()=>data.products.filter(p=>Number(p.stock||0)>0||(productHasFraction(p)&&Number(p.fractionStock||0)>0));
   const findProduct=(term)=>{term=String(term||'').trim().toLowerCase();if(!term)return null;return productsAvailable().find(p=>String(p.name||'').toLowerCase()===term)||productsAvailable().find(p=>String(p.code||'').toLowerCase()===term)||productsAvailable().find(p=>String(p.name||'').toLowerCase().includes(term))||null};
   const productOptions=()=>productsAvailable().map(p=>`<option value="${esc(p.name)}"></option>`).join('');
   const subtotal=()=>cart.reduce((s,x)=>s+Number(x.qty||0)*Number(x.price||0),0);
@@ -928,7 +977,7 @@ function renderVendas(){
   const grandTotal=()=>Math.max(0,subtotal()-discounts());
   const salesToday=()=>data.sales.filter(s=>(s.date||'').slice(0,10)===today());
   const draw=()=>{
-    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.stock)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.stock,productUnit(x))}</td><td><div class="qty kg-qty"><button data-dec="${i}" title="Diminuir">−</button><div class="qty-input-wrap"><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(productUnit(x))?'0.001':'1'}" step="${unitStep(x)}" value="${x.qty}"><span class="qty-unit">${esc(productUnit(x))}</span></div><button data-inc="${i}" title="Aumentar">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><input class="mini-input" data-discount="${i}" type="number" min="0" step="0.01" value="${x.discount||0}"></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
+    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.available)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.available,x.unit||productUnit(x))}</td><td><div class="qty kg-qty"><button data-dec="${i}" title="Diminuir">−</button><div class="qty-input-wrap"><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" step="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" value="${x.qty}"><span class="qty-unit">${esc(x.unit||productUnit(x))}</span></div><button data-inc="${i}" title="Aumentar">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><input class="mini-input" data-discount="${i}" type="number" min="0" step="0.01" value="${x.discount||0}"></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
     $('#pdvCart').innerHTML=cart.length?`<div class="table-wrap sales-table-wrap"><table class="table sales-table"><thead><tr><th>Produto</th><th>Estoque</th><th>Quantidade</th><th>Valor unit.</th><th>Desconto</th><th>Total</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="pdv-empty-cart">${ic('cart')}<strong>Carrinho vazio</strong></div>`;
     const itemCount=cart.reduce((s,x)=>s+Number(x.qty||0),0);
     $('#pdvItemCount').textContent=`${cart.length} produto${cart.length===1?'':'s'}`;
@@ -941,12 +990,12 @@ function renderVendas(){
     if($('#clientSelected'))$('#clientSelected').innerHTML=selectedClient?`<div class="selected-client compact"><div class="selected-client-icon">${ic('users')}</div><div><strong>${esc(clientName(selectedClient))}</strong><small>Cliente selecionado para esta venda</small></div><button class="icon-btn" id="clearSaleClient">${ic('x')}</button></div>`:'';
     if($('#clearSaleClient'))$('#clearSaleClient').onclick=()=>{selectedClient='';$('#clientSelect').value='';draw()};
     $$('#pdvCart [data-rm]').forEach(b=>b.onclick=()=>{cart.splice(Number(b.dataset.rm),1);draw()});
-    $$('#pdvCart [data-inc]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.inc);const step=isFractionalUnit(productUnit(cart[i]))?0.1:1;if(cart[i].qty+step<=cart[i].stock+1e-9)cart[i].qty=Number((cart[i].qty+step).toFixed(3));draw()});
-    $$('#pdvCart [data-dec]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.dec);const step=isFractionalUnit(productUnit(cart[i]))?0.1:1;const min=isFractionalUnit(productUnit(cart[i]))?0.001:1;if(cart[i].qty-step>=min-1e-9)cart[i].qty=Number((cart[i].qty-step).toFixed(3));draw()});
+    $$('#pdvCart [data-inc]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.inc);const step=isFractionalUnit(cart[i].unit)?0.1:1;if(cart[i].qty+step<=cart[i].available+1e-9)cart[i].qty=Number((cart[i].qty+step).toFixed(3));draw()});
+    $$('#pdvCart [data-dec]').forEach(b=>b.onclick=()=>{const i=Number(b.dataset.dec);const step=isFractionalUnit(cart[i].unit)?0.1:1;const min=isFractionalUnit(cart[i].unit)?0.001:1;if(cart[i].qty-step>=min-1e-9)cart[i].qty=Number((cart[i].qty-step).toFixed(3));draw()});
     $$('#pdvCart [data-cart-qty]').forEach(el=>el.onchange=()=>{
-      const i=Number(el.dataset.cartQty),item=cart[i],min=isFractionalUnit(productUnit(item))?0.001:1;
+      const i=Number(el.dataset.cartQty),item=cart[i],min=isFractionalUnit(item.unit)?0.001:1;
       const q=Math.max(min,Number(el.value||min));
-      if(q>Number(item.stock||0)){toast('Quantidade maior que o estoque disponível.');el.value=item.qty;return}
+      if(q>Number(item.available||0)){toast('Quantidade maior que o estoque disponível.');el.value=item.qty;return}
       item.qty=Number(q.toFixed(3));draw();
     });
     $$('#pdvCart [data-price]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.price)].price=Math.max(0,Number(el.value||0));draw()});
@@ -960,12 +1009,17 @@ function renderVendas(){
   };
   const addProduct=()=>{
     const p=findProduct($('#productSearch').value);
-    const minQty=isFractionalUnit(productUnit(p))?0.001:1;const qty=Math.max(minQty,Number($('#quickQty').value||minQty));
     if(!p)return toast('Selecione um produto cadastrado.');
-    const current=cart.find(x=>x.id===p.id),already=current?current.qty:0;
-    if(already+qty>Number(p.stock||0))return toast('Quantidade maior que o estoque disponível.');
-    if(current)current.qty=Number((current.qty+qty).toFixed(3));else cart.push({...p,qty:Number(qty.toFixed(3)),discount:0});
-    $('#productSearch').value='';$('#quickQty').value=1;draw();
+    const choices=productSaleUnits(p);
+    const choice=choices.find(x=>x.mode===quickSaleMode)||choices[0];
+    const minQty=isFractionalUnit(choice.unit)?0.001:1;
+    const qty=Math.max(minQty,Number($('#quickQty').value||minQty));
+    const key=`${p.id}:${choice.mode}`;
+    const current=cart.find(x=>x.cartKey===key),already=current?current.qty:0;
+    if(already+qty>Number(choice.available||0)+1e-9)return toast(`Quantidade maior que o estoque disponível (${qtyLabel(choice.available,choice.unit)}).`);
+    if(current){current.qty=Number((current.qty+qty).toFixed(3));current.available=choice.available;}
+    else cart.push({...p,cartKey:key,stockMode:choice.mode,unit:choice.unit,available:choice.available,qty:Number(qty.toFixed(3)),price:choice.price,discount:0});
+    $('#productSearch').value='';$('#quickQty').value=1;quickSaleMode='package';draw();
   };
   const recentRows=data.sales.slice().reverse().slice(0,6).map((s,i)=>`<tr><td>${esc(String(s.id).slice(-4))}</td><td>${esc(s.client||'Sem cliente')}</td><td>${s.items||0}</td><td>${money(s.total)}</td><td>${esc(salePaymentLabel(s))}</td><td><div class="sale-row-actions"><button class="icon-btn" data-print-sale="${s.id}" title="Imprimir comprovante">${ic('report')}</button><button class="icon-btn" data-edit-sale="${s.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-delete-sale="${s.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('');
   $('#page').innerHTML=`<div class="pdv-layout"><section class="pdv-main">
@@ -973,7 +1027,7 @@ function renderVendas(){
     <div class="pdv-toolbar-title"><div class="pdv-icon-title">${ic('cart')}</div><div><h2>Nova venda</h2><p>Selecione os produtos, confira os valores e finalize o atendimento.</p></div></div>
     <div class="pdv-product-line">
       <label class="pdv-product-field"><span>Produto</span><div class="pdv-search pdv-search-custom"><i>${ic('report')}</i><input id="productSearch" autocomplete="off" placeholder="Buscar por nome ou código do produto..."></div><div id="productSuggestions" class="product-suggestions" hidden></div></label>
-      <label class="pdv-quick-qty"><span>Quantidade</span><div class="pdv-qty-control"><input id="quickQty" type="number" min="0.001" step="0.001" value="1"><strong id="quickUnitHint" class="pdv-unit-hint">un</strong></div></label>
+      <label class="pdv-quick-qty"><span>Quantidade / forma de venda</span><div class="pdv-qty-control"><input id="quickQty" type="number" min="0.001" step="0.001" value="1"><select id="quickSaleUnit" class="pdv-unit-select"><option value="package">un</option></select></div></label>
       <button id="addProductBtn" class="pdv-launch-product">${ic('plus')}Lançar produto</button>
     </div>
     <div class="pdv-customer-row">
@@ -1002,7 +1056,7 @@ function renderVendas(){
     <div class="card pdv-recent"><div class="pdv-side-title small">${ic('report')} <h2>Últimas vendas</h2></div><div class="pdv-recent-wrap"><table><thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pgto.</th><th>Ações</th></tr></thead><tbody>${recentRows||`<tr><td colspan="6">Nenhuma venda ainda.</td></tr>`}</tbody></table></div></div>
   </aside></div>`;
   $('#addProductBtn').onclick=addProduct;
-  const syncQuickUnit=()=>{const p=findProduct($('#productSearch').value);if(!p)return;const u=productUnit(p);$('#quickUnitHint').textContent=u;$('#quickQty').step=unitStep(p);$('#quickQty').min=isFractionalUnit(u)?'0.001':'1';if(Number($('#quickQty').value)<=0)$('#quickQty').value=isFractionalUnit(u)?'0.5':'1';};
+  const syncQuickUnit=()=>{const p=findProduct($('#productSearch').value);const sel=$('#quickSaleUnit');if(!p){sel.innerHTML='<option value="package">un</option>';quickSaleMode='package';return;}const choices=productSaleUnits(p);sel.innerHTML=choices.map(c=>`<option value="${c.mode}">${esc(c.unit)} • ${c.mode==='fraction'?'fracionado':'inteiro'} • ${money(c.price)} • disp. ${qtyLabel(c.available,c.unit)}</option>`).join('');let c=choices.find(x=>x.mode===quickSaleMode&&x.available>0)||choices.find(x=>x.available>0)||choices[0];quickSaleMode=c.mode;sel.value=quickSaleMode;$('#quickQty').step=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').min=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').value=isFractionalUnit(c.unit)?'0.5':'1';};
 
   const suggestionBox=$('#productSuggestions');
   const renderProductSuggestions=()=>{
@@ -1018,7 +1072,7 @@ function renderVendas(){
       <button type="button" class="product-suggestion" data-product-pick="${p.id}">
         ${p.photo?`<img src="${p.photo}" alt="">`:`<span class="product-suggestion-icon">${ic('box')}</span>`}
         <span class="product-suggestion-main"><strong>${esc(p.name)}</strong><small>${esc(p.code||p.id)}${p.brand?' • '+esc(p.brand):''}</small></span>
-        <span class="product-suggestion-meta"><b>${money(p.price)} / ${esc(productUnit(p))}</b><small>Estoque: ${esc(qtyLabel(p.stock,productUnit(p)))}</small></span>
+        <span class="product-suggestion-meta"><b>${money(p.price)} / ${esc(productUnit(p))}</b><small>Estoque: ${esc(productStockSummary(p))}</small></span>
       </button>`).join(''):'<div class="product-suggestion-empty">Nenhum produto encontrado.</div>';
     suggestionBox.hidden=false;
 
@@ -1027,15 +1081,13 @@ function renderVendas(){
       const p=data.products.find(x=>x.id===btn.dataset.productPick);
       if(!p)return;
       $('#productSearch').value=p.name;
-      const u=productUnit(p);
-      $('#quickUnitHint').textContent=u;
-      $('#quickQty').step=unitStep(p);
-      $('#quickQty').min=isFractionalUnit(u)?'0.001':'1';
-      $('#quickQty').value=isFractionalUnit(u)?'0.5':'1';
+      quickSaleMode='package';
+      syncQuickUnit();
       suggestionBox.hidden=true;
     });
   };
 
+  $('#quickSaleUnit').addEventListener('change',e=>{quickSaleMode=e.target.value;syncQuickUnit()});
   $('#productSearch').addEventListener('focus',renderProductSuggestions);
   $('#productSearch').addEventListener('input',()=>{syncQuickUnit();renderProductSuggestions()});
   $('#productSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();suggestionBox.hidden=true;addProduct()}if(e.key==='Escape')suggestionBox.hidden=true;});
@@ -1051,13 +1103,15 @@ function renderVendas(){
     if(!paymentDefs.length||!payment)return toast('Ative uma forma de pagamento em Configurações antes de finalizar a venda.');
     if(payment==='Fiado'&&!selectedClient)return toast('Para vender fiado, selecione um cliente cadastrado.');
     if(payment==='Fiado'&&!$('#fiadoDue').value)return toast('Informe o vencimento do fiado.');
-    cart.forEach(x=>{const p=data.products.find(p=>p.id===x.id);if(p)p.stock-=x.qty});
+    const stockLines=cart.map(x=>({productId:x.id,qty:x.qty,unit:x.unit,stockMode:x.stockMode}));
+    const stockApplied=applySaleStock(stockLines);
+    if(!stockApplied.ok)return toast(`Estoque insuficiente para ${stockApplied.name}. Disponível: ${qtyLabel(stockApplied.available,stockApplied.unit)}.`);
     const payLabel=payment==='Cartão'?`Cartão - ${cardType}`:payment;
-    const sale={id:uid('VEN'),date:now(),client:selectedClient?clientName(selectedClient):'',clientId:selectedClient,items:cart.reduce((s,x)=>s+x.qty,0),total:grandTotal(),payment:payLabel,paymentType:payment,cardType:payment==='Cartão'?cardType:'',obs:$('#saleObs').value,seller:$('#seller').value,financialStatus:payment==='Fiado'?'Em aberto':'Recebida',receivedAmount:payment==='Fiado'?0:grandTotal(),lines:cart.map(x=>({productId:x.id,name:x.name,qty:x.qty,unit:productUnit(x),price:x.price,discount:x.discount||0,photo:x.photo||''}))};
+    const sale={id:uid('VEN'),date:now(),client:selectedClient?clientName(selectedClient):'',clientId:selectedClient,items:cart.reduce((s,x)=>s+x.qty,0),total:grandTotal(),payment:payLabel,paymentType:payment,cardType:payment==='Cartão'?cardType:'',obs:$('#saleObs').value,seller:$('#seller').value,financialStatus:payment==='Fiado'?'Em aberto':'Recebida',receivedAmount:payment==='Fiado'?0:grandTotal(),lines:cart.map(x=>({productId:x.id,name:x.name,qty:x.qty,unit:x.unit||productUnit(x),stockMode:x.stockMode||'package',price:x.price,discount:x.discount||0,photo:x.photo||''}))};
     data.sales.push(sale);
     sessionStorage.setItem('dchacara_last_sale_id',sale.id);
     if(payment==='Fiado'){
-      const itemDesc=cart.map(x=>`${x.qty}x ${x.name}`).join(', ');
+      const itemDesc=cart.map(x=>`${qtyLabel(x.qty,x.unit||productUnit(x))} de ${x.name}`).join(', ');
       data.debts.push({id:uid('FIA'),clientId:selectedClient,saleId:sale.id,description:`Venda fiada • ${itemDesc}`,value:sale.total,balance:sale.total,due:$('#fiadoDue').value,status:'Em aberto',createdAt:now()});
     }
     save();toast(payment==='Fiado'?'Venda fiada finalizada e conta criada em Fiados.':'Venda finalizada com sucesso.');setTimeout(()=>location.reload(),600);
@@ -1072,7 +1126,7 @@ function renderEstoque(){
   normalizeInventoryData();
   const state=renderEstoque.state||{search:'',status:'Todos',supplier:'Todos',category:'Todos',page:1};
   renderEstoque.state=state;
-  const value=data.products.reduce((a,b)=>a+Number(b.stock||0)*Number(b.cost||0),0);
+  const value=data.products.reduce((a,b)=>{const closed=Number(b.stock||0)*Number(b.cost||0);const open=productHasFraction(b)&&Number(b.packageSize||0)>0?(Number(b.fractionStock||0)/Number(b.packageSize||1))*Number(b.cost||0):0;return a+closed+open},0);
   const low=data.products.filter(p=>Number(p.stock||0)<=Number(p.min||0)).length;
   const categories=['Todos',...inventoryCategories()];
   const suppliers=['Todos',...inventorySuppliers()];
@@ -1091,7 +1145,7 @@ function renderEstoque(){
   const start=(state.page-1)*perPage;
   const view=filtered.slice(start,start+perPage);
   const pageButtons=Array.from({length:pages},(_,i)=>i+1).map(n=>`<button class="${n===state.page?'active':''}" data-stock-page="${n}">${n}</button>`).join('');
-  const rows=view.map((p,idx)=>`<tr><td><div class="stock-check"></div></td><td>${esc(p.code||p.id)}</td><td><div class="stock-product-cell">${p.photo?`<img class="stock-thumb" src="${p.photo}" alt="${esc(p.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(p.name)}</strong><small>${esc(p.description||p.brand||'Produto cadastrado')}</small></div></div></td><td><span class="stock-cat-badge ${inventoryTone(p.category)}">${esc(p.category||'Sem categoria')}</span></td><td>${esc(p.brand||'-')}</td><td class="stock-unit-cell"><span class="stock-unit-badge">${esc(productUnit(p))}</span></td><td class="stock-num-cell"><span class="${Number(p.stock||0)<=Number(p.min||0)?'stock-low':'stock-ok'}">${Number(p.stock||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</span></td><td class="stock-num-cell"><span class="stock-min-value">${Number(p.min||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</span></td><td>${esc(p.supplier||'-')}</td><td class="stock-money-cell">${money(p.cost)}</td><td class="stock-money-cell">${money(p.price)}</td><td><span class="stock-status ${inventoryStatus(p)==='Baixo Estoque'?'low':'normal'}">${inventoryStatus(p)}</span></td><td><div class="stock-actions"><button class="icon-btn" data-adjust-product="${p.id}" title="Ajuste de estoque">${ic('tray')}</button><button class="icon-btn" data-edit-product="${p.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-product="${p.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="13"><div class="empty stock-empty-inline">Nenhum produto encontrado para os filtros selecionados.</div></td></tr>`;
+  const rows=view.map((p,idx)=>`<tr><td><div class="stock-check"></div></td><td>${esc(p.code||p.id)}</td><td><div class="stock-product-cell">${p.photo?`<img class="stock-thumb" src="${p.photo}" alt="${esc(p.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(p.name)}</strong><small>${esc(p.description||p.brand||'Produto cadastrado')}</small></div></div></td><td><span class="stock-cat-badge ${inventoryTone(p.category)}">${esc(p.category||'Sem categoria')}</span></td><td>${esc(p.brand||'-')}</td><td class="stock-unit-cell"><span class="stock-unit-badge">${esc(productUnit(p))}</span></td><td class="stock-num-cell"><span class="${Number(p.stock||0)<=Number(p.min||0)?'stock-low':'stock-ok'}">${Number(p.stock||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</span>${productHasFraction(p)?`<small class="fraction-stock-note">+ ${qtyLabel(p.fractionStock,p.fractionUnit)} aberto</small>`:''}</td><td class="stock-num-cell"><span class="stock-min-value">${Number(p.min||0).toLocaleString('pt-BR',{maximumFractionDigits:3})}</span></td><td>${esc(p.supplier||'-')}</td><td class="stock-money-cell">${money(p.cost)}</td><td class="stock-money-cell">${money(p.price)}</td><td><span class="stock-status ${inventoryStatus(p)==='Baixo Estoque'?'low':'normal'}">${inventoryStatus(p)}</span></td><td><div class="stock-actions">${productHasFraction(p)?`<button class="stock-open-pack" data-open-package="${p.id}" title="Abrir embalagem: transfere 1 ${esc(productUnit(p))} para ${esc(p.fractionUnit)}">${ic('layers')}<span>Abrir</span></button>`:''}<button class="icon-btn" data-adjust-product="${p.id}" title="Ajuste de estoque">${ic('tray')}</button><button class="icon-btn" data-edit-product="${p.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-product="${p.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="13"><div class="empty stock-empty-inline">Nenhum produto encontrado para os filtros selecionados.</div></td></tr>`;
   $('#page').innerHTML=`
   <div class="grid stock-kpis">
     <article class="card hover stock-stat-card"><div class="stock-stat-icon green">${ic('box')}</div><div class="stock-stat-copy"><small>Itens Cadastrados</small><strong>${data.products.length}</strong><div class="trend">${data.products.length?'+ cadastro(s) disponíveis':'Sem produtos cadastrados'}</div></div><div class="stock-stat-bars"></div></article>
@@ -1140,6 +1194,7 @@ function renderEstoque(){
   $$('[data-stock-category]').forEach(btn=>btn.onclick=()=>{state.category=btn.dataset.stockCategory;state.page=1;renderEstoque()});
   $$('[data-stock-page]').forEach(btn=>btn.onclick=()=>{state.page=Number(btn.dataset.stockPage);renderEstoque()});
   
+  $$('[data-open-package]').forEach(btn=>btn.onclick=()=>openPackage(btn.dataset.openPackage));
   $$('[data-adjust-product]').forEach(btn=>btn.onclick=()=>openInventoryAdjustment(btn.dataset.adjustProduct));
   $$('[data-del-product]').forEach(btn=>btn.onclick=()=>{
     const p=data.products.find(x=>x.id===btn.dataset.delProduct);
@@ -1202,7 +1257,13 @@ function entryNewProductForm(){
           </div>
         </label>
         <label>Fornecedor<input id="epSupplier" value="${esc(supplier)}" placeholder="Fornecedor"></label>
-        <label>Unidade de venda<select id="epUnit">${PRODUCT_UNITS.map(u=>`<option value="${u}">${u}</option>`).join('')}</select></label>
+        <label>Unidade principal<select id="epUnit">${PRODUCT_UNITS.map(u=>`<option value="${u}">${u}</option>`).join('')}</select></label>
+        <label class="full fraction-toggle-label"><span>Venda fracionada</span><div class="fraction-toggle"><input id="epFractional" type="checkbox"><div><strong>Permitir vender parte da embalagem</strong><small>Ex.: saco por kg ou rolo por metro.</small></div></div></label>
+        <div id="epFractionFields" class="full fraction-fields" hidden>
+          <label>Quantidade por embalagem<input id="epPackageSize" type="number" min="0.001" step="0.001" value="0" placeholder="Ex.: 20"></label>
+          <label>Unidade fracionada<select id="epFractionUnit">${FRACTION_UNITS.map(u=>`<option value="${u}">${u}</option>`).join('')}</select></label>
+          <label>Preço por unidade fracionada<input id="epFractionPrice" type="number" min="0" step="0.01" value="0"></label>
+        </div>
         <label>Estoque mínimo<input id="epMin" type="number" min="0" step="1" value="${Number(data.settings?.defaultMinStock??0)}"></label>
         <label>Custo por unidade<input id="epCost" type="number" min="0" step="0.01" value="${suggestedCost}"></label>
         <label>Preço de venda<input id="epPrice" type="number" min="0" step="0.01" value="0"></label>
@@ -1220,6 +1281,7 @@ function entryNewProductForm(){
     $('#epMin').step=isFractionalUnit(u)?'0.001':'1';
   };
   $('#epUnit').addEventListener('change',syncUnit);
+  $('#epFractional').addEventListener('change',()=>{$('#epFractionFields').hidden=!$('#epFractional').checked});
   $('#cancelEntryProduct').onclick=()=>{closeModal();renderEntradas()};
   $('#entryProductCategoryBtn').onclick=e=>{
     e.preventDefault();
@@ -1251,8 +1313,14 @@ function entryNewProductForm(){
       cost,
       price:Math.max(0,Number($('#epPrice').value||0)),
       photo,
-      description:$('#epDescription').value.trim()
+      description:$('#epDescription').value.trim(),
+      fractional:$('#epFractional').checked,
+      packageSize:$('#epFractional').checked?Math.max(0,Number($('#epPackageSize').value||0)):0,
+      fractionUnit:$('#epFractionUnit').value||'kg',
+      fractionStock:0,
+      fractionPrice:$('#epFractional').checked?Math.max(0,Number($('#epFractionPrice').value||0)):0
     };
+    if(product.fractional&&product.packageSize<=0)return toast('Informe quanto existe em cada embalagem.');
     if(!product.code)product.code=product.id;
     if(!data.categories.some(c=>String(c).toLowerCase()===category.toLowerCase()))data.categories.push(category);
     data.categories=[...new Set(data.categories)];
@@ -1406,7 +1474,7 @@ function renderEntradas(){
   <div class="entry-layout">
     <div class="card entry-table-card">
       <div class="entry-section-head"><div><h2>Últimas Entradas</h2><p>Compras, notas fiscais e recebimento de mercadorias cadastradas.</p></div><a href="#" id="viewAllEntries">Ver todas →</a></div>
-      <div class="table-wrap entry-table-wrap"><table class="table entry-table"><thead><tr><th>Nota Fiscal</th><th>Data</th><th>Fornecedor</th><th>Produto</th><th>Qtd</th><th>Custo Unit.</th><th>Custo Total</th><th>Status</th><th>Ações</th></tr></thead><tbody>${recent.map(e=>`<tr><td>${esc(e.nf||'-')}</td><td>${esc(e.date||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.product||'-')}</td><td>${e.qty}</td><td>${money(e.cost)}</td><td>${money(entryTotal(e))}</td><td>${badge(e.status||'Recebida')}</td><td><div class="stock-actions">${e.status!=='Recebida'?`<button class="icon-btn" data-receive-entry="${e.id}" title="Receber mercadoria">${ic('check')}</button>`:''}<button class="icon-btn" data-edit-entry="${e.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-entry="${e.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="9"><div class="empty stock-empty-inline">Nenhuma entrada registrada ainda.</div></td></tr>`}</tbody></table></div>
+      <div class="table-wrap entry-table-wrap"><table class="table entry-table"><thead><tr><th>Nota Fiscal</th><th>Data</th><th>Fornecedor</th><th>Produto</th><th>Qtd</th><th>Custo Unit.</th><th>Custo Total</th><th>Status</th><th>Ações</th></tr></thead><tbody>${recent.map(e=>`<tr><td>${esc(e.nf||'-')}</td><td>${esc(e.date||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.product||'-')}</td><td>${esc(qtyLabel(e.qty,e.unit||productUnit(data.products.find(p=>p.id===e.productId))))}</td><td>${money(e.cost)}</td><td>${money(entryTotal(e))}</td><td>${badge(e.status||'Recebida')}</td><td><div class="stock-actions">${e.status!=='Recebida'?`<button class="icon-btn" data-receive-entry="${e.id}" title="Receber mercadoria">${ic('check')}</button>`:''}<button class="icon-btn" data-edit-entry="${e.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-entry="${e.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="9"><div class="empty stock-empty-inline">Nenhuma entrada registrada ainda.</div></td></tr>`}</tbody></table></div>
     </div>
     <aside class="card entry-form-card">
       <div class="entry-form-head"><div class="entry-form-title"><span class="entry-form-icon">${ic('plus')}</span><div><h2>Nova Entrada</h2><p>Lance a nota ou registre o recebimento da mercadoria.</p></div></div></div>
@@ -1903,7 +1971,7 @@ function renderIndicadores(){
   const netResult=grossProfit-totalExpenses;
   const ticket=filteredSales.length?salesRevenue/filteredSales.length:0;
   const openDebt=data.debts.filter(d=>Number(d.balance||0)>0).reduce((s,d)=>s+Number(d.balance||0),0);
-  const stockValue=data.products.reduce((s,p)=>s+Number(p.stock||0)*Number(p.cost||0),0);
+  const stockValue=data.products.reduce((s,p)=>s+(Number(p.stock||0)*Number(p.cost||0))+(productHasFraction(p)&&Number(p.packageSize||0)>0?(Number(p.fractionStock||0)/Number(p.packageSize||1))*Number(p.cost||0):0),0);
   const lowStock=data.products.filter(p=>Number(p.stock||0)<=Number(p.min||0)).length;
 
   const monthKeys=[];
@@ -2058,7 +2126,7 @@ function renderIndicadores(){
   $('#anClear').onclick=()=>{renderIndicadores.state={start:firstMonth,end:today(),category:'Todas',payment:'Todos',supplier:'Todos'};renderIndicadores()};
   $('#anExport').onclick=()=>exportAnalyticsCSV(combinedRows);
   $('#exportSales').onclick=()=>downloadCSV('relatorio_vendas.csv',['Data','Cliente','Itens','Total','Pagamento','Status Financeiro'],filteredSales.map(s=>[s.date,s.client,s.items,s.total,salePaymentLabel(s),s.financialStatus||'Recebida']));
-  $('#exportStock').onclick=()=>downloadCSV('relatorio_estoque.csv',['Código','Produto','Categoria','Estoque','Mínimo','Custo','Preço','Fornecedor'],data.products.map(p=>[p.code||p.id,p.name,p.category,p.stock,p.min,p.cost,p.price,p.supplier]));
+  $('#exportStock').onclick=()=>exportInventoryCSV(data.products);
   $('#exportExpenses').onclick=()=>downloadCSV('relatorio_despesas.csv',['Data','Categoria','Descrição','Fornecedor','Pagamento','Valor','Status'],expenses.map(e=>[e.date,e.category,e.description,e.supplier,e.payment,e.value,e.status]));
   $('#exportDebts').onclick=()=>downloadCSV('relatorio_fiados.csv',['Cliente','Descrição','Valor','Saldo','Vencimento','Status'],data.debts.map(d=>[clientName(d.clientId),d.description,d.value,d.balance,d.due,debtStatus(d)]));
   $('#printAnalytics').onclick=()=>window.print();
