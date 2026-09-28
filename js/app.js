@@ -1534,14 +1534,10 @@ function paymentForm(d){
 function renderClientes(){
   const state=renderClientes.state||{search:'',page:1};
   renderClientes.state=state;
-  const term=state.search.trim().toLowerCase();
-  const filtered=data.clients.slice().filter(c=>!term||`${c.name} ${c.phone||''} ${c.email||''} ${c.document||''} ${c.city||''}`.toLowerCase().includes(term)).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
-  const perPage=10,pages=Math.max(1,Math.ceil(filtered.length/perPage));
-  if(state.page>pages)state.page=pages;
-  const start=(state.page-1)*perPage, view=filtered.slice(start,start+perPage);
   const withOpen=new Set(data.debts.filter(d=>d.status!=='Pago'&&Number(d.balance||0)>0).map(d=>d.clientId)).size;
   const totalOpen=data.debts.filter(d=>d.status!=='Pago').reduce((a,b)=>a+Number(b.balance||0),0);
   const received=data.payments.reduce((a,b)=>a+Number(b.value||0),0);
+
   $('#page').innerHTML=`
   <div class="grid client-kpis">
     <article class="card hover stock-stat-card"><div class="stock-stat-icon green">${ic('users')}</div><div class="stock-stat-copy"><small>Clientes Cadastrados</small><strong>${data.clients.length}</strong><div class="trend neutral">Base atual de clientes</div></div><div class="stock-stat-bars"></div></article>
@@ -1551,33 +1547,35 @@ function renderClientes(){
   </div>
   <div class="card clients-main-card">
     <div class="client-page-head"><div><h2>Clientes</h2><p>Cadastre os clientes que compram fiado e acompanhe quem possui saldo em aberto.</p></div><button class="btn primary" id="newClient">${ic('plus')}Novo Cliente</button></div>
-    <div class="client-toolbar"><label class="client-search"><i>${ic('report')}</i><input id="clientSearch" value="${esc(state.search)}" placeholder="Buscar por nome, telefone, CPF/CNPJ ou cidade..."></label><a class="btn outline" href="fiados.html">${ic('credit')}Ir para Fiados</a></div>
-    <div class="table-wrap stock-table-wrap"><table class="table stock-table clients-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>E-mail</th><th>CPF/CNPJ</th><th>Cidade</th><th>Fiados em Aberto</th><th>Ações</th></tr></thead><tbody>${view.map(c=>{const open=clientOpenDebts(c.id).reduce((a,b)=>a+Number(b.balance||0),0);return `<tr><td><div class="client-name-cell"><span class="client-avatar-sm">${clientInitials(c.name)}</span><div><strong>${esc(c.name)}</strong><small>${open>0?'Possui fiado':'Sem pendências'}</small></div></div></td><td>${esc(formatPhoneBR(c.phone))}</td><td>${esc(c.email||'-')}</td><td>${esc(c.document||'-')}</td><td>${esc(c.city||'-')}</td><td><strong class="${open>0?'client-debt-value':''}">${money(open)}</strong></td><td><div class="stock-actions"><button class="icon-btn" data-new-debt-client="${c.id}" title="Nova venda fiada">${ic('cart')}</button><button class="icon-btn" data-edit-client="${c.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-client="${c.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`}).join('')||`<tr><td colspan="7"><div class="empty stock-empty-inline">Nenhum cliente encontrado.</div></td></tr>`}</tbody></table></div>
-    <div class="stock-pagination"><span>Exibindo ${filtered.length?start+1:0} a ${Math.min(start+perPage,filtered.length)} de ${filtered.length} cliente(s)</span><div class="stock-page-buttons">${Array.from({length:pages},(_,i)=>i+1).map(n=>`<button class="${n===state.page?'active':''}" data-client-page="${n}">${n}</button>`).join('')}</div></div>
+    <div class="client-toolbar"><label class="client-search"><i>${ic('report')}</i><input id="clientSearch" value="${esc(state.search)}" autocomplete="off" placeholder="Buscar por nome, telefone, CPF/CNPJ ou cidade..."></label><a class="btn outline" href="fiados.html">${ic('credit')}Ir para Fiados</a></div>
+    <div class="table-wrap stock-table-wrap"><table class="table stock-table clients-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>E-mail</th><th>CPF/CNPJ</th><th>Cidade</th><th>Fiados em Aberto</th><th>Ações</th></tr></thead><tbody id="clientsTableBody"></tbody></table></div>
+    <div class="stock-pagination" id="clientsPagination"></div>
   </div>`;
-  $('#newClient').onclick=()=>clientForm();
-  let clientSearchTimer;
-  $('#clientSearch').oninput=e=>{
-    const value=e.target.value;
-    const cursor=e.target.selectionStart??value.length;
-    state.search=value;
-    state.page=1;
-    clearTimeout(clientSearchTimer);
-    clientSearchTimer=setTimeout(()=>{
-      renderClientes();
-      requestAnimationFrame(()=>{
-        const input=$('#clientSearch');
-        if(!input)return;
-        input.focus({preventScroll:true});
-        const pos=Math.min(cursor,input.value.length);
-        try{input.setSelectionRange(pos,pos)}catch{}
-      });
-    },180);
+
+  const refreshClientList=()=>{
+    const term=state.search.trim().toLowerCase();
+    const filtered=data.clients.slice().filter(c=>!term||`${c.name} ${c.phone||''} ${c.email||''} ${c.document||''} ${c.city||''}`.toLowerCase().includes(term)).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+    const perPage=10,pages=Math.max(1,Math.ceil(filtered.length/perPage));
+    if(state.page>pages)state.page=pages;
+    const start=(state.page-1)*perPage, view=filtered.slice(start,start+perPage);
+    const body=$('#clientsTableBody');
+    const pagination=$('#clientsPagination');
+    if(!body||!pagination)return;
+    body.innerHTML=view.map(c=>{const open=clientOpenDebts(c.id).reduce((a,b)=>a+Number(b.balance||0),0);return `<tr><td><div class="client-name-cell"><span class="client-avatar-sm">${clientInitials(c.name)}</span><div><strong>${esc(c.name)}</strong><small>${open>0?'Possui fiado':'Sem pendências'}</small></div></div></td><td>${esc(formatPhoneBR(c.phone))}</td><td>${esc(c.email||'-')}</td><td>${esc(c.document||'-')}</td><td>${esc(c.city||'-')}</td><td><strong class="${open>0?'client-debt-value':''}">${money(open)}</strong></td><td><div class="stock-actions"><button class="icon-btn" data-new-debt-client="${c.id}" title="Nova venda fiada">${ic('cart')}</button><button class="icon-btn" data-edit-client="${c.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-client="${c.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`}).join('')||`<tr><td colspan="7"><div class="empty stock-empty-inline">Nenhum cliente encontrado.</div></td></tr>`;
+    pagination.innerHTML=`<span>Exibindo ${filtered.length?start+1:0} a ${Math.min(start+perPage,filtered.length)} de ${filtered.length} cliente(s)</span><div class="stock-page-buttons">${Array.from({length:pages},(_,i)=>i+1).map(n=>`<button class="${n===state.page?'active':''}" data-client-page="${n}">${n}</button>`).join('')}</div>`;
+
+    $$('[data-client-page]').forEach(b=>b.onclick=()=>{state.page=+b.dataset.clientPage;refreshClientList()});
+    $$('[data-new-debt-client]').forEach(b=>b.onclick=()=>{sessionStorage.setItem('pdv_prefill_client',b.dataset.newDebtClient);location.href='vendas.html'});
+    $$('[data-del-client]').forEach(b=>b.onclick=()=>{const c=data.clients.find(x=>x.id===b.dataset.delClient);if(!c||!confirm(`Excluir ${c.name}?`))return;if(data.debts.some(d=>d.clientId===c.id)||data.sales.some(s=>s.clientId===c.id))return toast('Cliente possui histórico de vendas/fiados e não pode ser excluído.');data.clients=data.clients.filter(x=>x!==c);save();refreshClientList()});
   };
-  $$('[data-client-page]').forEach(b=>b.onclick=()=>{state.page=+b.dataset.clientPage;renderClientes()});
-  $$('[data-new-debt-client]').forEach(b=>b.onclick=()=>{sessionStorage.setItem('pdv_prefill_client',b.dataset.newDebtClient);location.href='vendas.html'});
-  
-  $$('[data-del-client]').forEach(b=>b.onclick=()=>{const c=data.clients.find(x=>x.id===b.dataset.delClient);if(!c||!confirm(`Excluir ${c.name}?`))return;if(data.debts.some(d=>d.clientId===c.id)||data.sales.some(s=>s.clientId===c.id))return toast('Cliente possui histórico de vendas/fiados e não pode ser excluído.');data.clients=data.clients.filter(x=>x!==c);save();renderClientes()});
+
+  $('#newClient').onclick=()=>clientForm();
+  $('#clientSearch').oninput=e=>{
+    state.search=e.target.value;
+    state.page=1;
+    refreshClientList();
+  };
+  refreshClientList();
 }
 function renderFiados(){
   const state=renderFiados.state||{search:'',status:'Todos',due:'Todos',selectedClientId:'',page:1};
