@@ -876,3 +876,14 @@ body{margin:0}
 .product-photo-edit{position:relative!important}
 
 #saveProduct:disabled{opacity:.72;cursor:wait!important}
+
+/* v1.10 - ajustes leves de Vendas e Estoque */
+.pdv-note-row-clean{
+  grid-template-columns:1fr!important;
+}
+.pdv-note-row-clean label{
+  width:100%;
+}
+#stockSearch{
+  caret-color:#087247;
+}
