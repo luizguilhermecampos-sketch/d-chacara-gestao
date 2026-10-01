@@ -1162,7 +1162,7 @@ function renderVendas(){
       }
 
       const payLabel=payment==='Cartão'?`Cartão - ${cardType}`:payment;
-      const sale={id:uid('VEN'),date:now(),client:selectedClient?clientName(selectedClient):'',clientId:selectedClient,items:cart.reduce((s,x)=>s+x.qty,0),total:grandTotal(),payment:payLabel,paymentType:payment,cardType:payment==='Cartão'?cardType:'',obs:$('#saleObs').value,seller:$('#seller').value,financialStatus:payment==='Fiado'?'Em aberto':'Recebida',receivedAmount:payment==='Fiado'?0:grandTotal(),lines:cart.map(x=>({productId:x.id,name:x.name,qty:x.qty,unit:x.unit||productUnit(x),stockMode:x.stockMode||'package',price:x.price,discount:x.discount||0,photo:x.photo||''}))};
+      const sale={id:uid('VEN'),date:now(),client:selectedClient?clientName(selectedClient):'',clientId:selectedClient,items:cart.reduce((s,x)=>s+x.qty,0),total:grandTotal(),payment:payLabel,paymentType:payment,cardType:payment==='Cartão'?cardType:'',obs:$('#saleObs').value,seller:$('#seller').value,financialStatus:payment==='Fiado'?'Em aberto':'Recebida',receivedAmount:payment==='Fiado'?0:grandTotal(),lines:cart.map(x=>{const p=data.products.find(prod=>prod.id===x.id)||x;const packageCost=Number(p.cost||0);const packageSize=Number(p.packageSize||0);const isFraction=(x.stockMode||'package')==='fraction';const unitCost=isFraction&&packageSize>0?packageCost/packageSize:packageCost;return {productId:x.id,name:x.name,qty:x.qty,unit:x.unit||productUnit(x),stockMode:x.stockMode||'package',price:x.price,discount:x.discount||0,photo:x.photo||'',unitCostSnapshot:unitCost,packageCostSnapshot:packageCost,packageSizeSnapshot:packageSize};})};
       data.sales.push(sale);
       if(payment==='Fiado'){
         const itemDesc=cart.map(x=>`${qtyLabel(x.qty,x.unit||productUnit(x))} de ${x.name}`).join(', ');
@@ -1975,7 +1975,16 @@ function analyticsMonthKey(v){return analyticsDate(v).slice(0,7)}
 function analyticsMonthLabel(key){if(!key)return'-';const [y,m]=key.split('-');const names=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];return `${names[Number(m)-1]}/${String(y).slice(-2)}`}
 function analyticsProduct(productId){return data.products.find(p=>p.id===productId)}
 function analyticsSaleCategory(line){return analyticsProduct(line?.productId)?.category||'Sem categoria'}
-function analyticsSaleCost(line){const p=analyticsProduct(line?.productId);return Number(p?.cost||0)*Number(line?.qty||0)}
+function analyticsSaleUnitCost(line){
+  const snap=Number(line?.unitCostSnapshot);
+  if(Number.isFinite(snap)&&snap>=0)return snap;
+  const p=analyticsProduct(line?.productId);
+  const packageCost=Number(line?.packageCostSnapshot??p?.cost??0);
+  const packageSize=Number(line?.packageSizeSnapshot??p?.packageSize??0);
+  const fraction=line?.stockMode==='fraction'||(!line?.stockMode&&p&&productHasFraction(p)&&String(line?.unit||'')===String(p.fractionUnit||''));
+  return fraction&&packageSize>0?packageCost/packageSize:packageCost;
+}
+function analyticsSaleCost(line){return analyticsSaleUnitCost(line)*Number(line?.qty||0)}
 function analyticsSaleRevenue(line){return (Number(line?.price||0)*Number(line?.qty||0))-Number(line?.discount||0)}
 function analyticsFmt(v){return Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:0})}
 function analyticsPct(v){return `${Number(v||0).toFixed(1).replace('.',',')}%`}
@@ -2037,8 +2046,9 @@ function renderIndicadores(){
   const debts=data.debts.filter(d=>analyticsInRange(d.createdAt||d.due,state.start,state.end));
   const payments=data.payments.filter(p=>analyticsInRange(p.date,state.start,state.end));
 
-  const salesRevenue=filteredSales.reduce((s,x)=>s+Number(x.total||0),0);
-  const salesCost=filteredSales.reduce((s,sale)=>s+(sale.lines||[]).reduce((a,l)=>a+analyticsSaleCost(l),0),0);
+  const filteredSaleLines=filteredSales.flatMap(s=>(s.lines||[]).filter(line=>state.category==='Todas'||analyticsSaleCategory(line)===state.category).map(line=>({...line,saleId:s.id,date:s.date})));
+  const salesRevenue=filteredSaleLines.reduce((sum,line)=>sum+analyticsSaleRevenue(line),0);
+  const salesCost=filteredSaleLines.reduce((sum,line)=>sum+analyticsSaleCost(line),0);
   const grossProfit=salesRevenue-salesCost;
   const totalExpenses=expenses.reduce((s,x)=>s+Number(x.value||0),0);
   const netResult=grossProfit-totalExpenses;
@@ -2046,9 +2056,9 @@ function renderIndicadores(){
   const openDebt=data.debts.filter(d=>Number(d.balance||0)>0).reduce((s,d)=>s+Number(d.balance||0),0);
   const stockValue=data.products.reduce((s,p)=>s+(Number(p.stock||0)*Number(p.cost||0))+(productHasFraction(p)&&Number(p.packageSize||0)>0?(Number(p.fractionStock||0)/Number(p.packageSize||1))*Number(p.cost||0):0),0);
   const lowStock=data.products.filter(p=>Number(p.stock||0)<=Number(p.min||0)).length;
-  const fractionalSales=filteredSales.filter(s=>(s.lines||[]).some(l=>l.stockMode==='fraction'));
-  const fractionalLines=filteredSales.flatMap(s=>(s.lines||[]).filter(l=>l.stockMode==='fraction').map(l=>({...l,saleId:s.id,date:s.date})));
-  const packageLines=filteredSales.flatMap(s=>(s.lines||[]).filter(l=>l.stockMode!=='fraction').map(l=>({...l,saleId:s.id,date:s.date})));
+  const fractionalSales=filteredSales.filter(s=>(s.lines||[]).some(l=>l.stockMode==='fraction'&&(state.category==='Todas'||analyticsSaleCategory(l)===state.category)));
+  const fractionalLines=filteredSaleLines.filter(l=>l.stockMode==='fraction');
+  const packageLines=filteredSaleLines.filter(l=>l.stockMode!=='fraction');
   const fractionalRevenue=fractionalLines.reduce((sum,l)=>sum+analyticsSaleRevenue(l),0);
   const packageRevenue=packageLines.reduce((sum,l)=>sum+analyticsSaleRevenue(l),0);
   const openedInPeriod=(data.stockAdjustments||[]).filter(a=>a.type==='abrir_embalagem'&&analyticsInRange(a.date,state.start,state.end));
@@ -2139,7 +2149,7 @@ function renderIndicadores(){
   <div class="analytics-kpi-grid">
     <article class="card analytics-kpi"><div class="analytics-kpi-icon green">${ic('cart')}</div><div><small>Faturamento</small><strong>${money(salesRevenue)}</strong><span>${filteredSales.length} venda(s)</span></div></article>
     <article class="card analytics-kpi"><div class="analytics-kpi-icon blue">${ic('credit')}</div><div><small>Ticket Médio</small><strong>${money(ticket)}</strong><span>Valor médio por venda</span></div></article>
-    <article class="card analytics-kpi"><div class="analytics-kpi-icon emerald">${ic('chart')}</div><div><small>Lucro Bruto Est.</small><strong>${money(grossProfit)}</strong><span>Vendas menos custo dos produtos</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon emerald">${ic('chart')}</div><div><small>Lucro Bruto Est.</small><strong>${money(grossProfit)}</strong><span>Custo vendido: ${money(salesCost)} • Margem: ${salesRevenue>0?analyticsPct(grossProfit/salesRevenue*100):'0,0%'}</span></div></article>
     <article class="card analytics-kpi"><div class="analytics-kpi-icon rose">${ic('wallet')}</div><div><small>Despesas</small><strong>${money(totalExpenses)}</strong><span>${expenses.length} lançamento(s)</span></div></article>
     <article class="card analytics-kpi"><div class="analytics-kpi-icon ${netResult>=0?'green':'rose'}">${ic('bank')}</div><div><small>Resultado Est.</small><strong>${money(netResult)}</strong><span>Lucro bruto menos despesas</span></div></article>
     <article class="card analytics-kpi"><div class="analytics-kpi-icon amber">${ic('users')}</div><div><small>Fiados em Aberto</small><strong>${money(openDebt)}</strong><span>A receber atualmente</span></div></article>

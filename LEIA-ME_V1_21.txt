@@ -1,0 +1,9 @@
+D Chácara AgroGestão — v1.21
+
+Correção do Lucro Bruto / Resultado Estimado:
+- Venda de embalagem inteira: custo = custo da embalagem x quantidade.
+- Venda fracionada: custo = (custo da embalagem / quantidade por embalagem) x quantidade fracionada.
+- Novas vendas gravam um snapshot do custo unitário, custo da embalagem e quantidade por embalagem no momento da venda.
+- Vendas antigas sem snapshot usam o cadastro atual do produto como fallback.
+- Filtro por categoria agora calcula faturamento/custo apenas das linhas da categoria selecionada, sem somar itens de outras categorias da mesma venda.
+- Card de Lucro Bruto mostra também custo vendido e margem percentual.
