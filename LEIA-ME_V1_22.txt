@@ -1,0 +1,9 @@
+AGROGESTÃO D CHÁCARA - v1.22
+
+Atualizações:
+- Revisão do cálculo de custo/lucro para vendas inteiras e fracionadas.
+- Relatório detalhado de vendas e lucro dentro de Indicadores e Relatórios.
+- Filtros de data inicial/final permanecem no topo e controlam o relatório.
+- PDF de vendas com produto, quantidade, valor vendido, custo considerado, lucro e margem.
+- Botão PDF de vendas junto aos filtros e no card do relatório.
+- Novas vendas continuam congelando o custo no momento da venda.

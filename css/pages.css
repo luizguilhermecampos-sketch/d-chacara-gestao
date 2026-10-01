@@ -978,3 +978,8 @@ body[data-page="vendas"] .pdv-launch-product{
     max-width:none!important;
   }
 }
+
+/* v1.22 - relatório detalhado de vendas/lucro */
+.sales-profit-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 16px}.sales-profit-summary>div{border:1px solid #dce8e0;background:#f8fbf9;border-radius:12px;padding:12px 14px}.sales-profit-summary small{display:block;font-size:10px;font-weight:900;text-transform:uppercase;color:#61756a;margin-bottom:5px}.sales-profit-summary strong{font-size:18px;color:#143f2d}.sales-profit-table td small{display:block;color:#7b8d84;font-size:10px;margin-top:2px}.analytics-positive{color:#087746}.analytics-report-note{padding:10px 2px 0;color:#73857b;font-size:11px}.analytics-filter-actions{flex-wrap:wrap}.analytics-filter-actions .btn{min-width:max-content}
+@media(max-width:850px){.sales-profit-summary{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.sales-profit-summary{grid-template-columns:1fr}}

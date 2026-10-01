@@ -1976,12 +1976,25 @@ function analyticsMonthLabel(key){if(!key)return'-';const [y,m]=key.split('-');c
 function analyticsProduct(productId){return data.products.find(p=>p.id===productId)}
 function analyticsSaleCategory(line){return analyticsProduct(line?.productId)?.category||'Sem categoria'}
 function analyticsSaleUnitCost(line){
-  const snap=Number(line?.unitCostSnapshot);
-  if(Number.isFinite(snap)&&snap>=0)return snap;
+  // 1) Novas vendas: usa sempre o custo congelado no momento da venda.
+  const snapRaw=line?.unitCostSnapshot;
+  if(snapRaw!==undefined&&snapRaw!==null&&snapRaw!=='' ){
+    const snap=Number(snapRaw);
+    if(Number.isFinite(snap)&&snap>=0)return snap;
+  }
+  // 2) Vendas antigas: reconstrói o custo com os dados históricos disponíveis.
   const p=analyticsProduct(line?.productId);
-  const packageCost=Number(line?.packageCostSnapshot??p?.cost??0);
+  const packageCost=Number(line?.packageCostSnapshot??line?.costSnapshot??p?.cost??0);
   const packageSize=Number(line?.packageSizeSnapshot??p?.packageSize??0);
-  const fraction=line?.stockMode==='fraction'||(!line?.stockMode&&p&&productHasFraction(p)&&String(line?.unit||'')===String(p.fractionUnit||''));
+  const lineUnit=String(line?.unit||'').trim().toLowerCase();
+  const fractionUnit=String(p?.fractionUnit||'').trim().toLowerCase();
+  const mainUnit=String(productUnit(p)||'').trim().toLowerCase();
+  let fraction=line?.stockMode==='fraction';
+  if(!line?.stockMode&&p&&productHasFraction(p)){
+    // Só infere fracionamento automaticamente quando a unidade vendida coincide
+    // com a fracionada e não é, ao mesmo tempo, a unidade principal.
+    fraction=!!lineUnit&&lineUnit===fractionUnit&&lineUnit!==mainUnit;
+  }
   return fraction&&packageSize>0?packageCost/packageSize:packageCost;
 }
 function analyticsSaleCost(line){return analyticsSaleUnitCost(line)*Number(line?.qty||0)}
@@ -2012,6 +2025,71 @@ function analyticsDailyBars(items){
 }
 function exportAnalyticsCSV(rows,name='painel_geral.csv'){
   downloadCSV(name,['Data','Tipo','Descrição','Categoria','Cliente/Fornecedor','Pagamento/Status','Valor'],rows)
+}
+
+function analyticsSaleMode(line){
+  const p=analyticsProduct(line?.productId);
+  if(line?.stockMode==='fraction')return 'Fracionado';
+  if(line?.stockMode==='package')return 'Inteiro';
+  const u=String(line?.unit||'').toLowerCase();
+  const fu=String(p?.fractionUnit||'').toLowerCase();
+  const mu=String(productUnit(p)||'').toLowerCase();
+  return p&&productHasFraction(p)&&u&&u===fu&&u!==mu?'Fracionado':'Inteiro';
+}
+function analyticsSaleReportLines(sales,category='Todas'){
+  return sales.flatMap(s=>(s.lines||[])
+    .filter(line=>category==='Todas'||analyticsSaleCategory(line)===category)
+    .map(line=>{
+      const revenue=analyticsSaleRevenue(line);
+      const cost=analyticsSaleCost(line);
+      return {saleId:s.id,date:s.date,client:s.client||'Venda sem cliente',payment:salePaymentLabel(s),product:line.name||'Produto',category:analyticsSaleCategory(line),qty:Number(line.qty||0),unit:line.unit||'un',mode:analyticsSaleMode(line),unitPrice:Number(line.price||0),revenue,cost,profit:revenue-cost,margin:revenue>0?(revenue-cost)/revenue*100:0};
+    }));
+}
+function downloadSalesProfitPdf(sales,start,end,category='Todas',payment='Todos'){
+  const rows=analyticsSaleReportLines(sales,category);
+  if(!rows.length)return toast('Não há vendas no período selecionado para gerar o PDF.');
+  const revenue=rows.reduce((a,x)=>a+x.revenue,0);
+  const cost=rows.reduce((a,x)=>a+x.cost,0);
+  const profit=revenue-cost;
+  const margin=revenue>0?profit/revenue*100:0;
+  const store=data.settings?.store||'D Chácara Empório';
+  const range=`${start?formatDateBR(start):'Início'} a ${end?formatDateBR(end):'Hoje'}`;
+  const chunks=[];
+  const perPage=17;
+  for(let i=0;i<rows.length;i+=perPage)chunks.push(rows.slice(i,i+perPage));
+  const pages=chunks.map((chunk,pageIndex)=>{
+    let c='';
+    c+=`0.04 0.38 0.24 rg 0 786 595 56 re f\n`;
+    c+=`BT /F2 18 Tf 1 1 1 rg 36 817 Td (${pdfEsc(pdfTruncate(store,42))}) Tj ET\n`;
+    c+=`BT /F1 9 Tf 1 1 1 rg 36 801 Td (RELATORIO DE VENDAS E LUCRO) Tj ET\n`;
+    c+=`BT /F1 8.5 Tf 0.15 0.2 0.17 rg 36 766 Td (Periodo: ${pdfEsc(range)}   |   Categoria: ${pdfEsc(category)}   |   Pagamento: ${pdfEsc(payment)}) Tj ET\n`;
+    if(pageIndex===0){
+      const boxes=[['Faturamento',pdfMoney(revenue)],['Custo vendido',pdfMoney(cost)],['Lucro bruto',pdfMoney(profit)],['Margem',analyticsPct(margin)]];
+      boxes.forEach((b,j)=>{const x=36+j*132;c+=`0.95 0.97 0.95 rg ${x} 710 120 42 re f\n`;c+=`BT /F1 7.5 Tf 0.3 0.4 0.34 rg ${x+8} 737 Td (${pdfEsc(b[0])}) Tj ET\n`;c+=`BT /F2 11 Tf 0.05 0.32 0.2 rg ${x+8} 720 Td (${pdfEsc(b[1])}) Tj ET\n`;});
+    }
+    let y=pageIndex===0?684:748;
+    c+=`0.90 0.93 0.91 rg 30 ${y-4} 535 22 re f\n`;
+    const heads=[['Data',34],['Produto',92],['Qtd.',285],['Venda',342],['Custo',415],['Lucro',486]];
+    heads.forEach(([h,x])=>{c+=`BT /F2 7.5 Tf 0.18 0.28 0.22 rg ${x} ${y+4} Td (${pdfEsc(h)}) Tj ET\n`;});
+    y-=24;
+    chunk.forEach(r=>{
+      c+=`BT /F1 7.2 Tf 0.12 0.18 0.15 rg 34 ${y} Td (${pdfEsc(formatDateBR(analyticsDate(r.date)))}) Tj ET\n`;
+      c+=`BT /F1 7.2 Tf 0.12 0.18 0.15 rg 92 ${y} Td (${pdfEsc(pdfTruncate(r.product,30))}) Tj ET\n`;
+      c+=`BT /F1 7.2 Tf 0.12 0.18 0.15 rg 285 ${y} Td (${pdfEsc(pdfTruncate(qtyLabel(r.qty,r.unit),12))}) Tj ET\n`;
+      c+=`BT /F1 7.2 Tf 0.12 0.18 0.15 rg 342 ${y} Td (${pdfEsc(pdfMoney(r.revenue))}) Tj ET\n`;
+      c+=`BT /F1 7.2 Tf 0.12 0.18 0.15 rg 415 ${y} Td (${pdfEsc(pdfMoney(r.cost))}) Tj ET\n`;
+      c+=`BT /F2 7.2 Tf ${r.profit>=0?'0.04 0.42 0.24':'0.72 0.15 0.15'} rg 486 ${y} Td (${pdfEsc(pdfMoney(r.profit))}) Tj ET\n`;
+      c+=`0.92 0.94 0.93 RG 30 ${y-7} m 565 ${y-7} l S\n`;
+      y-=27;
+    });
+    c+=`BT /F1 7 Tf 0.4 0.45 0.42 rg 36 25 Td (Pagina ${pageIndex+1} de ${chunks.length} - Gerado em ${pdfEsc(pdfDateTime(now()))}) Tj ET\n`;
+    return c;
+  });
+  const blob=makeSimplePdf(pages);
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`relatorio_vendas_lucro_${start||'inicio'}_${end||today()}.pdf`;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1200);
+  toast('Relatório de vendas em PDF gerado com sucesso.');
 }
 
 function renderIndicadores(){
@@ -2047,6 +2125,7 @@ function renderIndicadores(){
   const payments=data.payments.filter(p=>analyticsInRange(p.date,state.start,state.end));
 
   const filteredSaleLines=filteredSales.flatMap(s=>(s.lines||[]).filter(line=>state.category==='Todas'||analyticsSaleCategory(line)===state.category).map(line=>({...line,saleId:s.id,date:s.date})));
+  const saleReportLines=analyticsSaleReportLines(filteredSales,state.category);
   const salesRevenue=filteredSaleLines.reduce((sum,line)=>sum+analyticsSaleRevenue(line),0);
   const salesCost=filteredSaleLines.reduce((sum,line)=>sum+analyticsSaleCost(line),0);
   const grossProfit=salesRevenue-salesCost;
@@ -2142,7 +2221,7 @@ function renderIndicadores(){
       <label><span>Categoria</span><select id="anCategory">${categories.map(x=>`<option ${x===state.category?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
       <label><span>Pagamento</span><select id="anPayment">${paymentOptions.map(x=>`<option ${x===state.payment?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
       <label><span>Fornecedor</span><select id="anSupplier">${suppliers.map(x=>`<option ${x===state.supplier?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
-      <div class="analytics-filter-actions"><button class="btn outline" id="anClear">${ic('filter')}Limpar</button><button class="btn primary" id="anExport">${ic('download')}Exportar geral</button></div>
+      <div class="analytics-filter-actions"><button class="btn outline" id="anClear">${ic('filter')}Limpar</button><button class="btn outline" id="salesPdfTop">${ic('report')}PDF de vendas</button><button class="btn primary" id="anExport">${ic('download')}Exportar geral</button></div>
     </div>
   </div>
 
@@ -2214,6 +2293,16 @@ function renderIndicadores(){
     </div>
   </div>
 
+  <div class="card analytics-report-card sales-profit-report">
+    <div class="analytics-report-head">
+      <div><h2>${ic('chart')} Relatório de Vendas e Lucro</h2><p>Conferência detalhada do período selecionado acima: valor vendido, custo considerado e lucro por produto.</p></div>
+      <div class="analytics-report-actions"><button class="btn primary" id="salesProfitPdf">${ic('report')}Baixar PDF de vendas</button></div>
+    </div>
+    <div class="sales-profit-summary"><div><small>Faturamento filtrado</small><strong>${money(salesRevenue)}</strong></div><div><small>Custo vendido</small><strong>${money(salesCost)}</strong></div><div><small>Lucro bruto</small><strong>${money(grossProfit)}</strong></div><div><small>Margem</small><strong>${salesRevenue>0?analyticsPct(grossProfit/salesRevenue*100):'0,0%'}</strong></div></div>
+    <div class="analytics-table-wrap"><table class="table analytics-table sales-profit-table"><thead><tr><th>Data</th><th>Produto</th><th>Forma</th><th>Qtd.</th><th>Valor vendido</th><th>Custo considerado</th><th>Lucro</th><th>Margem</th></tr></thead><tbody>${saleReportLines.slice(0,80).map(r=>`<tr><td>${esc(formatDateBR(analyticsDate(r.date)))}</td><td><strong>${esc(r.product)}</strong><small>${esc(r.category)}</small></td><td>${esc(r.mode)}</td><td>${esc(qtyLabel(r.qty,r.unit))}</td><td>${money(r.revenue)}</td><td>${money(r.cost)}</td><td class="${r.profit<0?'analytics-negative':'analytics-positive'}"><strong>${money(r.profit)}</strong></td><td>${analyticsPct(r.margin)}</td></tr>`).join('')||`<tr><td colspan="8"><div class="analytics-empty">Sem vendas para o período selecionado.</div></td></tr>`}</tbody></table></div>
+    ${saleReportLines.length>80?`<div class="analytics-report-note">Exibindo os primeiros 80 itens na tela. O PDF inclui todos os itens filtrados.</div>`:''}
+  </div>
+
   <div class="card analytics-report-card">
     <div class="analytics-report-head">
       <div><h2>${ic('report')} Relatórios e Exportações</h2><p>Exporte dados completos ou use o resumo abaixo para conferência.</p></div>
@@ -2232,6 +2321,8 @@ function renderIndicadores(){
   $('#anStart').onchange=apply;$('#anEnd').onchange=apply;$('#anCategory').onchange=apply;$('#anPayment').onchange=apply;$('#anSupplier').onchange=apply;
   $('#anClear').onclick=()=>{renderIndicadores.state={start:firstMonth,end:today(),category:'Todas',payment:'Todos',supplier:'Todos'};renderIndicadores()};
   $('#anExport').onclick=()=>exportAnalyticsCSV(combinedRows);
+  $('#salesPdfTop').onclick=()=>downloadSalesProfitPdf(filteredSales,state.start,state.end,state.category,state.payment);
+  $('#salesProfitPdf').onclick=()=>downloadSalesProfitPdf(filteredSales,state.start,state.end,state.category,state.payment);
   $('#exportSales').onclick=()=>downloadCSV('relatorio_vendas.csv',['Data','Cliente','Itens','Total','Pagamento','Status Financeiro'],filteredSales.map(s=>[s.date,s.client,s.items,s.total,salePaymentLabel(s),s.financialStatus||'Recebida']));
   $('#exportStock').onclick=()=>exportInventoryCSV(data.products);
   $('#exportExpenses').onclick=()=>downloadCSV('relatorio_despesas.csv',['Data','Categoria','Descrição','Fornecedor','Pagamento','Valor','Status'],expenses.map(e=>[e.date,e.category,e.description,e.supplier,e.payment,e.value,e.status]));
