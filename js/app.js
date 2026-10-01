@@ -57,13 +57,18 @@ function saveLocalCache(){
 const save=()=>{saveLocalCache();queueCloudSave()};
 
 async function persistNow(){
+  clearTimeout(cloudTimer);
+  cloudTimer=null;
+  while(cloudSaving)await new Promise(resolve=>setTimeout(resolve,40));
+  cloudSaving=true;
   saveLocalCache();
   cloudStatus='syncing';
   updateCloudBadge();
   try{
+    const payload=structuredClone(data);
     const {error}=await sb.from('app_state').upsert({
       id:'main',
-      payload:data,
+      payload,
       updated_at:new Date().toISOString()
     });
     if(error)throw error;
@@ -76,6 +81,8 @@ async function persistNow(){
     cloudStatus='offline';
     updateCloudBadge();
     return false;
+  }finally{
+    cloudSaving=false;
   }
 }
 
@@ -1132,23 +1139,55 @@ function renderVendas(){
   $('#clearCart').onclick=()=>{if(cart.length&&confirm('Limpar todos os itens do carrinho?')){cart=[];draw()}};
   $('#saveBudget').onclick=()=>downloadBudgetPdf(cart,selectedClient,$('#saleObs').value.trim());
   $('#printReceipt').onclick=()=>{const preferred=sessionStorage.getItem('dchacara_last_sale_id');const sale=(preferred&&data.sales.find(s=>s.id===preferred))||data.sales[data.sales.length-1];if(!sale)return toast('Finalize uma venda antes de imprimir o comprovante.');printSaleReceipt(sale);};
-  $('#finishSale').onclick=()=>{
+  $('#finishSale').onclick=async()=>{
+    const finishBtn=$('#finishSale');
+    if(finishBtn?.disabled)return;
     if(!cart.length)return toast('Adicione pelo menos um produto.');
     if(!paymentDefs.length||!payment)return toast('Ative uma forma de pagamento em Configurações antes de finalizar a venda.');
     if(payment==='Fiado'&&!selectedClient)return toast('Para vender fiado, selecione um cliente cadastrado.');
     if(payment==='Fiado'&&!$('#fiadoDue').value)return toast('Informe o vencimento do fiado.');
-    const stockLines=cart.map(x=>({productId:x.id,qty:x.qty,unit:x.unit,stockMode:x.stockMode}));
-    const stockApplied=applySaleStock(stockLines);
-    if(!stockApplied.ok)return toast(`Estoque insuficiente para ${stockApplied.name}. Disponível: ${qtyLabel(stockApplied.available,stockApplied.unit)}.`);
-    const payLabel=payment==='Cartão'?`Cartão - ${cardType}`:payment;
-    const sale={id:uid('VEN'),date:now(),client:selectedClient?clientName(selectedClient):'',clientId:selectedClient,items:cart.reduce((s,x)=>s+x.qty,0),total:grandTotal(),payment:payLabel,paymentType:payment,cardType:payment==='Cartão'?cardType:'',obs:$('#saleObs').value,seller:$('#seller').value,financialStatus:payment==='Fiado'?'Em aberto':'Recebida',receivedAmount:payment==='Fiado'?0:grandTotal(),lines:cart.map(x=>({productId:x.id,name:x.name,qty:x.qty,unit:x.unit||productUnit(x),stockMode:x.stockMode||'package',price:x.price,discount:x.discount||0,photo:x.photo||''}))};
-    data.sales.push(sale);
-    sessionStorage.setItem('dchacara_last_sale_id',sale.id);
-    if(payment==='Fiado'){
-      const itemDesc=cart.map(x=>`${qtyLabel(x.qty,x.unit||productUnit(x))} de ${x.name}`).join(', ');
-      data.debts.push({id:uid('FIA'),clientId:selectedClient,saleId:sale.id,description:`Venda fiada • ${itemDesc}`,value:sale.total,balance:sale.total,due:$('#fiadoDue').value,status:'Em aberto',createdAt:now()});
+
+    const snapshot=structuredClone(data);
+    const oldHtml=finishBtn?.innerHTML||'';
+    if(finishBtn){finishBtn.disabled=true;finishBtn.innerHTML=`${ic('clock')} Salvando venda...`;}
+
+    try{
+      const stockLines=cart.map(x=>({productId:x.id,qty:x.qty,unit:x.unit,stockMode:x.stockMode}));
+      const stockApplied=applySaleStock(stockLines);
+      if(!stockApplied.ok){
+        data=snapshot;
+        saveLocalCache();
+        toast(`Venda não concluída: estoque insuficiente para ${stockApplied.name}. Disponível: ${qtyLabel(stockApplied.available,stockApplied.unit)}.`);
+        return;
+      }
+
+      const payLabel=payment==='Cartão'?`Cartão - ${cardType}`:payment;
+      const sale={id:uid('VEN'),date:now(),client:selectedClient?clientName(selectedClient):'',clientId:selectedClient,items:cart.reduce((s,x)=>s+x.qty,0),total:grandTotal(),payment:payLabel,paymentType:payment,cardType:payment==='Cartão'?cardType:'',obs:$('#saleObs').value,seller:$('#seller').value,financialStatus:payment==='Fiado'?'Em aberto':'Recebida',receivedAmount:payment==='Fiado'?0:grandTotal(),lines:cart.map(x=>({productId:x.id,name:x.name,qty:x.qty,unit:x.unit||productUnit(x),stockMode:x.stockMode||'package',price:x.price,discount:x.discount||0,photo:x.photo||''}))};
+      data.sales.push(sale);
+      if(payment==='Fiado'){
+        const itemDesc=cart.map(x=>`${qtyLabel(x.qty,x.unit||productUnit(x))} de ${x.name}`).join(', ');
+        data.debts.push({id:uid('FIA'),clientId:selectedClient,saleId:sale.id,description:`Venda fiada • ${itemDesc}`,value:sale.total,balance:sale.total,due:$('#fiadoDue').value,status:'Em aberto',createdAt:now()});
+      }
+
+      const ok=await persistNow();
+      if(!ok){
+        data=snapshot;
+        saveLocalCache();
+        toast('Venda não concluída: não foi possível salvar no Supabase. Verifique a conexão e tente novamente.');
+        return;
+      }
+
+      sessionStorage.setItem('dchacara_last_sale_id',sale.id);
+      toast(payment==='Fiado'?'Venda fiada salva com sucesso e conta criada em Fiados.':'Venda salva com sucesso.');
+      setTimeout(()=>renderVendas(),350);
+    }catch(err){
+      console.error('Erro ao finalizar venda:',err);
+      data=snapshot;
+      saveLocalCache();
+      toast('Venda não concluída: ocorreu um erro inesperado. Tente novamente.');
+    }finally{
+      if(finishBtn&&document.body.contains(finishBtn)){finishBtn.disabled=false;finishBtn.innerHTML=oldHtml;}
     }
-    save();toast(payment==='Fiado'?'Venda fiada finalizada e conta criada em Fiados.':'Venda finalizada com sucesso.');setTimeout(()=>location.reload(),600);
   };
   $$('[data-print-sale]').forEach(b=>b.onclick=()=>printSaleReceipt(data.sales.find(s=>s.id===b.dataset.printSale)));
   

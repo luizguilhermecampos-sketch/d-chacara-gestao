@@ -1,0 +1,10 @@
+D CHÁCARA AGROGESTÃO — v1.20
+
+Correção principal: finalização de vendas.
+
+- A venda agora aguarda a confirmação do Supabase antes de ser considerada concluída.
+- Removido o recarregamento automático que podia ocorrer antes da gravação terminar.
+- Botão Finalizar venda é bloqueado durante a gravação para evitar vendas duplicadas.
+- Se a gravação falhar, estoque, venda e fiado são restaurados ao estado anterior.
+- Mensagens claras informam falha de estoque, conexão ou erro inesperado.
+- Mantidas as funções de venda fracionada, abertura automática de embalagem, Entradas e Indicadores.
