@@ -983,3 +983,21 @@ body[data-page="vendas"] .pdv-launch-product{
 .sales-profit-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 16px}.sales-profit-summary>div{border:1px solid #dce8e0;background:#f8fbf9;border-radius:12px;padding:12px 14px}.sales-profit-summary small{display:block;font-size:10px;font-weight:900;text-transform:uppercase;color:#61756a;margin-bottom:5px}.sales-profit-summary strong{font-size:18px;color:#143f2d}.sales-profit-table td small{display:block;color:#7b8d84;font-size:10px;margin-top:2px}.analytics-positive{color:#087746}.analytics-report-note{padding:10px 2px 0;color:#73857b;font-size:11px}.analytics-filter-actions{flex-wrap:wrap}.analytics-filter-actions .btn{min-width:max-content}
 @media(max-width:850px){.sales-profit-summary{grid-template-columns:1fr 1fr}}
 @media(max-width:520px){.sales-profit-summary{grid-template-columns:1fr}}
+
+
+/* v1.23 - tooltips e feedback dos relatorios */
+.analytics-donut-legend>div{position:relative;transition:.15s;border-radius:8px}
+.analytics-donut-legend>div:hover{background:#f4f8f5}
+.analytics-donut-legend>div.analytics-legend-tip{cursor:help}
+.analytics-donut-legend>div.analytics-legend-tip::after{content:attr(data-tip);position:absolute;right:0;bottom:calc(100% + 8px);width:min(360px,72vw);white-space:normal;background:#10281d;color:#fff;padding:9px 11px;border-radius:10px;font-size:10px;line-height:1.45;font-weight:650;box-shadow:0 12px 32px rgba(0,0,0,.18);opacity:0;transform:translateY(4px);pointer-events:none;transition:.15s;z-index:50}
+.analytics-donut-legend>div.analytics-legend-tip:hover::after{opacity:1;transform:none}
+.analytics-filter-actions .btn,.analytics-report-actions .btn,.expense-action{transition:transform .15s,box-shadow .15s,filter .15s}
+.analytics-filter-actions .btn:hover,.analytics-report-actions .btn:hover,.expense-action:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(9,75,47,.09)}
+.analytics-filter-actions .btn:active,.analytics-report-actions .btn:active,.expense-action:active{transform:translateY(0);filter:brightness(.97)}
+
+.analytics-donut-svg{background:none!important;position:relative}
+.analytics-donut-svg:before{display:none}
+.analytics-donut-svg svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 6px 10px rgba(16,40,29,.08))}
+.analytics-pay-segment{cursor:help;transition:stroke-width .15s,filter .15s}
+.analytics-pay-segment:hover{stroke-width:23;filter:brightness(1.06)}
+.analytics-donut-svg .analytics-donut-center{z-index:2;pointer-events:none}

@@ -94,6 +94,31 @@ const today=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.g
 const now=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
 const uid=p=>`${p}-${Date.now()}-${Math.floor(Math.random()*999)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+function triggerDownload(blob,filename){
+  try{
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=filename||'arquivo';a.style.display='none';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+    return true;
+  }catch(err){console.error('Falha ao baixar arquivo:',err);toast('Não foi possível gerar o arquivo para download.');return false}
+}
+function csvCell(value){
+  const raw=String(value??'').replace(/\r?\n/g,' ').trim();
+  return `"${raw.replace(/"/g,'""')}"`;
+}
+function downloadCSV(filename,headers,rows){
+  try{
+    const safeRows=Array.isArray(rows)?rows:[];
+    if(!safeRows.length){toast('Não há dados no filtro atual para exportar.');return false}
+    const lines=[headers,...safeRows].map(row=>(Array.isArray(row)?row:[row]).map(csvCell).join(';'));
+    const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+    const ok=triggerDownload(blob,filename||'relatorio.csv');
+    if(ok)toast('Arquivo exportado com sucesso.');
+    return ok;
+  }catch(err){console.error('Erro ao exportar CSV:',err);toast('Erro ao exportar os dados.');return false}
+}
 const icons={home:'<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/>',cart:'<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M3 4h2l2.5 11h10.7l2.2-8H6.2"/>',box:'<path d="m12 2 8 4.5v11L12 22 4 17.5v-11L12 2Z"/><path d="M12 22V11"/><path d="m20 6.5-8 4.5-8-4.5"/>',tray:'<path d="M4 4h16v5H4z"/><path d="M3 9h18l-2 11H5L3 9Z"/>',wallet:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M16 12h5"/>',users:'<path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20V9"/>',report:'<path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5M9 13h6M9 17h6"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8A1.6 1.6 0 0 0 3.2 14H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3A1.6 1.6 0 0 0 10 3.2V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8A1.6 1.6 0 0 0 20.8 10H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1Z"/>',bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/>',plus:'<path d="M12 5v14M5 12h14"/>',download:'<path d="M12 3v12m-5-5 5 5 5-5M5 21h14"/>',credit:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>',camera:'<path d="M4 7h4l2-2h4l2 2h4v12H4z"/><circle cx="12" cy="13" r="3"/>',check:'<path d="m5 12 4 4L19 6"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',trash:'<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 10v6m4-6v6"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',bolt:'<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',truck:'<path d="M3 7h11v8H3z"/><path d="M14 10h4l3 3v2h-7z"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="17.5" cy="18.5" r="1.5"/>',wrench:'<path d="M14.7 6.3a4 4 0 0 0 4.8 5L11 19.8l-4.8-4.8 8.5-8.7Z"/><path d="m6.5 10.5-3-3 2-2 3 3"/>',receipt:'<path d="M7 3h10v18l-2-1-2 1-2-1-2 1-2-1-2 1V3z"/><path d="M9 8h6M9 12h6M9 16h4"/>',filter:'<path d="M4 5h16l-6 7v6l-4 2v-8z"/>',paperclip:'<path d="M9 13.5 15.5 7a3 3 0 1 1 4.2 4.2L11 20a5 5 0 0 1-7.1-7.1L13 3.8a2 2 0 1 1 2.8 2.8L7 15.5a1 1 0 1 1-1.4-1.4l7.8-7.8"/>',layers:'<path d="m12 3 9 4.5-9 4.5-9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>',bank:'<path d="M3 10h18"/><path d="M5 10v8M9 10v8M15 10v8M19 10v8"/><path d="m2 10 10-6 10 6"/><path d="M3 18h18"/>',ellipsis:'<circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>'};
 const ic=n=>`<svg class="icon" viewBox="0 0 24 24">${icons[n]||icons.box}</svg>`;
 const nav=[['dashboard','home','Início'],['vendas','cart','Vendas'],['estoque','box','Estoque'],['entradas','tray','Entradas'],['despesas','wallet','Despesas'],['fiados','credit','Fiados'],['clientes','users','Clientes'],['indicadores','chart','Indicadores e Relatórios'],['configuracoes','settings','Configurações']];
@@ -2008,11 +2033,27 @@ function analyticsHorizontalBars(items,valueFormatter=money){
 }
 function analyticsDonut(items,total,centerLabel='Total'){
   if(!items.length||!total)return '<div class="analytics-empty">Sem dados suficientes para composição.</div>';
-  const colors=['#0d7a4b','#42a765','#93c86f','#f0ad36','#d57b3d','#6b84d9','#b067c8','#9daaa3'];
+  const colors=['#087f5b','#2563eb','#f59e0b','#e34d59','#7c3aed','#0891b2','#db2777','#65a30d'];
   let acc=0;
   const gradient=items.map((x,i)=>{const s=acc;acc+=Number(x.value||0)/total*100;return `${colors[i%colors.length]} ${s}% ${acc}%`}).join(', ');
-  return `<div class="analytics-donut-wrap"><div class="analytics-donut" style="background:conic-gradient(${gradient})"><div class="analytics-donut-center"><strong>${money(total)}</strong><small>${esc(centerLabel)}</small></div></div><div class="analytics-donut-legend">${items.map((x,i)=>`<div><span><i style="background:${colors[i%colors.length]}"></i>${esc(x.label)}</span><b>${analyticsPct(Number(x.value||0)/total*100)}</b></div>`).join('')}</div></div>`;
+  return `<div class="analytics-donut-wrap"><div class="analytics-donut" style="background:conic-gradient(${gradient})"><div class="analytics-donut-center"><strong>${money(total)}</strong><small>${esc(centerLabel)}</small></div></div><div class="analytics-donut-legend">${items.map((x,i)=>`<div class="${x.tip?'analytics-legend-tip':''}" ${x.tip?`data-tip="${esc(x.tip)}" title="${esc(x.tip)}"`:''}><span><i style="background:${colors[i%colors.length]}"></i>${esc(x.label)}</span><b>${analyticsPct(Number(x.value||0)/total*100)}</b></div>`).join('')}</div></div>`;
 }
+function analyticsPaymentDonut(items,total,centerLabel='Vendas'){
+  if(!items.length||!total)return '<div class="analytics-empty">Sem dados suficientes para composição.</div>';
+  const colors=['#087f5b','#2563eb','#f59e0b','#e34d59','#7c3aed','#0891b2','#db2777','#65a30d'];
+  const r=46,circ=2*Math.PI*r;
+  let offset=0;
+  const circles=items.map((x,i)=>{
+    const ratio=Number(x.value||0)/total;
+    const len=Math.max(0,ratio*circ);
+    const dashOffset=-offset;
+    offset+=len;
+    const tip=x.tip||`${x.label}: ${money(x.value)}`;
+    return `<circle class="analytics-pay-segment" cx="60" cy="60" r="${r}" fill="none" stroke="${colors[i%colors.length]}" stroke-width="20" stroke-dasharray="${len} ${Math.max(0,circ-len)}" stroke-dashoffset="${dashOffset}" transform="rotate(-90 60 60)"><title>${esc(tip)}</title></circle>`;
+  }).join('');
+  return `<div class="analytics-donut-wrap"><div class="analytics-donut analytics-donut-svg"><svg viewBox="0 0 120 120" role="img" aria-label="Formas de pagamento">${circles}</svg><div class="analytics-donut-center"><strong>${money(total)}</strong><small>${esc(centerLabel)}</small></div></div><div class="analytics-donut-legend">${items.map((x,i)=>`<div class="${x.tip?'analytics-legend-tip':''}" ${x.tip?`data-tip="${esc(x.tip)}" title="${esc(x.tip)}"`:''}><span><i style="background:${colors[i%colors.length]}"></i>${esc(x.label)}</span><b>${analyticsPct(Number(x.value||0)/total*100)}</b></div>`).join('')}</div></div>`;
+}
+
 function analyticsGroupedBars(items){
   if(!items.length)return '<div class="analytics-empty">Sem dados suficientes.</div>';
   const max=Math.max(1,...items.flatMap(x=>[Number(x.revenue||0),Number(x.expenses||0)]));
@@ -2086,10 +2127,7 @@ function downloadSalesProfitPdf(sales,start,end,category='Todas',payment='Todos'
     return c;
   });
   const blob=makeSimplePdf(pages);
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`relatorio_vendas_lucro_${start||'inicio'}_${end||today()}.pdf`;a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1200);
-  toast('Relatório de vendas em PDF gerado com sucesso.');
+  if(triggerDownload(blob,`relatorio_vendas_lucro_${start||'inicio'}_${end||today()}.pdf`))toast('Relatório de vendas em PDF gerado com sucesso.');
 }
 
 function renderIndicadores(){
@@ -2166,9 +2204,24 @@ function renderIndicadores(){
   filteredSales.forEach(s=>(s.lines||[]).forEach(l=>{const c=analyticsSaleCategory(l);categoryMap[c]=(categoryMap[c]||0)+analyticsSaleRevenue(l)}));
   const categoryItems=Object.entries(categoryMap).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,7);
 
-  const payMap={};
-  filteredSales.forEach(s=>{const p=salePaymentLabel(s);payMap[p]=(payMap[p]||0)+Number(s.total||0)});
-  const payItems=Object.entries(payMap).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,7);
+  const payMap={},payProducts={};
+  filteredSales.forEach(s=>{
+    const p=salePaymentLabel(s);
+    payMap[p]=(payMap[p]||0)+Number(s.total||0);
+    if(!payProducts[p])payProducts[p]={};
+    (s.lines||[]).filter(line=>state.category==='Todas'||analyticsSaleCategory(line)===state.category).forEach(line=>{
+      const key=`${line.name||'Produto'}|${line.unit||'un'}`;
+      if(!payProducts[p][key])payProducts[p][key]={name:line.name||'Produto',unit:line.unit||'un',qty:0,revenue:0};
+      payProducts[p][key].qty+=Number(line.qty||0);
+      payProducts[p][key].revenue+=analyticsSaleRevenue(line);
+    });
+  });
+  const payItems=Object.entries(payMap).map(([label,value])=>{
+    const sold=Object.values(payProducts[label]||{}).sort((a,b)=>b.revenue-a.revenue);
+    const list=sold.slice(0,6).map(x=>`${x.name}: ${qtyLabel(x.qty,x.unit)} (${money(x.revenue)})`).join(' • ');
+    const extra=sold.length>6?` • +${sold.length-6} item(ns)`:'';
+    return {label,value,tip:`${label} - ${money(value)}. Vendido: ${list||'sem itens detalhados'}${extra}`};
+  }).sort((a,b)=>b.value-a.value).slice(0,7);
 
   const productMap={};
   filteredSales.forEach(s=>(s.lines||[]).forEach(l=>{
@@ -2267,7 +2320,7 @@ function renderIndicadores(){
     </div>
     <div class="card analytics-chart-card">
       <div class="analytics-title"><div><h2>Formas de Pagamento</h2><p>Distribuição das vendas por meio de pagamento.</p></div></div>
-      ${analyticsDonut(payItems,payItems.reduce((s,x)=>s+x.value,0),'Vendas')}
+      ${analyticsPaymentDonut(payItems,payItems.reduce((s,x)=>s+x.value,0),'Vendas')}
     </div>
   </div>
 

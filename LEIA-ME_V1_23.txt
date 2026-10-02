@@ -1,0 +1,11 @@
+D Chácara AgroGestão - v1.23
+
+Correções e revisão geral:
+- Restaurada função central de exportação CSV (estava ausente na v1.22).
+- Corrigidos Exportar geral, Vendas, Estoque, Despesas, Fiados e Exportar Despesas.
+- Downloads usam mecanismo mais robusto e mensagem de sucesso/erro.
+- Gráfico Formas de Pagamento com cores mais diferenciadas.
+- Ao passar o mouse nas formas de pagamento, exibe resumo dos produtos/quantidades/valores vendidos naquela forma.
+- PDF de vendas usa rotina de download robusta.
+- Cache-busting atualizado para v1.23 em todas as telas.
+- Mantidas melhorias de estoque fracionado, entradas, vendas pagas editáveis/excluíveis e cálculo de lucro.
