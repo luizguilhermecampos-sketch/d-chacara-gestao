@@ -1001,3 +1001,17 @@ body[data-page="vendas"] .pdv-launch-product{
 .analytics-pay-segment{cursor:help;transition:stroke-width .15s,filter .15s}
 .analytics-pay-segment:hover{stroke-width:23;filter:brightness(1.06)}
 .analytics-donut-svg .analytics-donut-center{z-index:2;pointer-events:none}
+
+
+/* v1.24 — Entradas: compra, recebimento, custo médio e despesa vinculada */
+.entry-optional{font-style:normal;font-size:10px;font-weight:700;color:#7b8f85;margin-left:5px;text-transform:uppercase}
+.entry-doc-type,.entry-expense-linked{display:block;font-size:10px;color:#778c82;margin-top:3px;white-space:nowrap}
+.entry-expense-linked{color:#0b7b49;font-weight:700}
+.entry-draft-head{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.entry-draft-head>strong{font-size:18px;color:#075b3b}
+.entry-help-box{margin-top:12px;padding:11px 13px;border:1px solid #d8e7de;background:#f7fbf8;border-radius:12px;display:flex;gap:10px;align-items:flex-start;font-size:11px;line-height:1.45;color:#52685e}
+.entry-help-box strong{color:#0a6543;white-space:nowrap}
+.entry-actions-v124{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.entry-actions-v124 .btn{justify-content:center;min-height:40px}
+.entry-expense-btn{background:#0b6f46!important;border-color:#0b6f46!important;color:#fff!important}
+@media(max-width:900px){.entry-actions-v124{grid-template-columns:1fr}.entry-help-box{flex-direction:column;gap:4px}}

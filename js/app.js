@@ -1311,14 +1311,91 @@ const entryStatusCount=s=>(data.entries||[]).filter(e=>String(e.status||'')===s)
 const entryPendingCount=()=> (data.entries||[]).filter(e=>String(e.status||'')!=='Recebida').length;
 function entryCategory(entry){return data.products.find(p=>p.id===entry.productId)?.category||'Outros'}
 
+
+const ENTRY_DOC_TYPES=['Nota Fiscal','Recibo','Compra sem documento','Outro'];
+const ENTRY_PAYMENT_TYPES=['PIX','Dinheiro','Cartão de Débito','Cartão de Crédito','Boleto','Transferência','Prazo'];
+function entryDraftDefault(){return {supplier:'',docType:'Nota Fiscal',nf:'',date:today(),payment:'PIX',obs:'',items:[],selectedProductId:'',itemQty:'1',itemCost:'0'}}
+function entryDocumentCode(date=today()){
+  const d=String(date||today()).replace(/-/g,'');
+  const seq=String(((data.entries||[]).filter(e=>String(e.date||'')===String(date||'')).length+1)).padStart(3,'0');
+  return `ENT-${d}-${seq}`;
+}
+function entryHasLaterMovement(entry){
+  if(!entry?.productId)return false;
+  const d=String(entry.date||'');
+  const saleLater=(data.sales||[]).some(s=>String(s.date||'').slice(0,10)>=d&&(s.lines||[]).some(l=>l.productId===entry.productId));
+  const adjustmentLater=(data.stockAdjustments||[]).some(a=>a.productId===entry.productId&&String(a.date||'').slice(0,10)>=d);
+  const idx=(data.entries||[]).indexOf(entry);
+  const laterEntry=(data.entries||[]).some((e,i)=>i>idx&&e.productId===entry.productId&&e.status==='Recebida');
+  return saleLater||adjustmentLater||laterEntry;
+}
+function entryCanReverse(entry){
+  if(!entry||entry.status!=='Recebida')return {ok:true};
+  const p=data.products.find(x=>x.id===entry.productId);
+  if(!p)return {ok:false,msg:'O produto desta entrada não foi encontrado no estoque.'};
+  if(Number(p.stock||0)+1e-9<Number(entry.qty||0))return {ok:false,msg:'Não é possível desfazer esta entrada porque parte da mercadoria já saiu do estoque.'};
+  if(entryHasLaterMovement(entry))return {ok:false,msg:'Não é possível alterar/excluir esta entrada recebida porque o produto já possui venda, ajuste ou recebimento posterior. Faça um ajuste de estoque para manter o histórico correto.'};
+  return {ok:true};
+}
+function applyReceivedEntryToProduct(entry){
+  const p=data.products.find(x=>x.id===entry.productId);
+  if(!p)return;
+  const qty=Math.max(0,Number(entry.qty||0));
+  const incomingCost=Math.max(0,Number(entry.cost||0));
+  const oldStock=Math.max(0,Number(p.stock||0));
+  const oldCost=Math.max(0,Number(p.cost||0));
+  const openEquivalent=p.fractional&&Number(p.packageSize||0)>0?Math.max(0,Number(p.fractionStock||0))/Number(p.packageSize||1):0;
+  const oldCostQty=oldStock+openEquivalent;
+  const newStock=oldStock+qty;
+  const newCostQty=oldCostQty+qty;
+  if(qty>0){
+    p.cost=newCostQty>0?Number((((oldCostQty*oldCost)+(qty*incomingCost))/newCostQty).toFixed(6)):incomingCost;
+    p.stock=Number(newStock.toFixed(3));
+  }
+  entry.stockBeforeReceive=oldStock;
+  entry.costBeforeReceive=oldCost;
+  entry.appliedAverageCost=Number(p.cost||0);
+  entry.receivedAt=entry.receivedAt||new Date().toISOString();
+}
+function reverseReceivedEntryFromProduct(entry){
+  const p=data.products.find(x=>x.id===entry.productId);
+  if(!p)return;
+  p.stock=Number(Math.max(0,Number(p.stock||0)-Number(entry.qty||0)).toFixed(3));
+  if(Number.isFinite(Number(entry.costBeforeReceive)))p.cost=Math.max(0,Number(entry.costBeforeReceive||0));
+}
+function syncEntryLinkedExpense(entry,oldTotal=null){
+  if(!entry?.expenseId)return;
+  const exp=(data.expenses||[]).find(x=>x.id===entry.expenseId);
+  if(!exp)return;
+  const groupEntries=(data.entries||[]).filter(x=>x.expenseId===entry.expenseId);
+  const total=groupEntries.reduce((s,x)=>s+entryTotal(x),0);
+  exp.value=Number(total.toFixed(2));
+  exp.date=entry.date||exp.date;
+  exp.supplier=entry.supplier||exp.supplier;
+  exp.payment=entry.payment||exp.payment;
+  exp.status=String(entry.payment||'')==='Prazo'?'Pendente':'Paga';
+  exp.description=`Compra de mercadorias${entry.documentDisplay?` • ${entry.documentDisplay}`:''}`;
+}
+function removeEntryLinkedExpense(entry){
+  if(!entry?.expenseId)return;
+  const expenseId=entry.expenseId;
+  const remaining=(data.entries||[]).filter(x=>x.id!==entry.id&&x.expenseId===expenseId);
+  const exp=(data.expenses||[]).find(x=>x.id===expenseId);
+  if(!exp)return;
+  if(!remaining.length)data.expenses=data.expenses.filter(x=>x.id!==expenseId);
+  else exp.value=Number(remaining.reduce((s,x)=>s+entryTotal(x),0).toFixed(2));
+}
+
 function captureEntryDraftFields(){
-  const state=renderEntradas.state||{supplier:'',nf:'',date:today(),obs:'',items:[]};
+  const state=renderEntradas.state||entryDraftDefault();
   renderEntradas.state=state;
-  const supplier=$('#entrySupplier'),nf=$('#entryNf'),date=$('#entryDate'),obs=$('#entryObs');
+  const supplier=$('#entrySupplier'),docType=$('#entryDocType'),nf=$('#entryNf'),date=$('#entryDate'),payment=$('#entryPayment'),obs=$('#entryObs');
   const product=$('#entryProduct'),qty=$('#entryQty'),cost=$('#entryCost');
   if(supplier)state.supplier=supplier.value.trim();
+  if(docType)state.docType=docType.value;
   if(nf)state.nf=nf.value.trim();
   if(date)state.date=date.value;
+  if(payment)state.payment=payment.value;
   if(obs)state.obs=obs.value.trim();
   if(product)state.selectedProductId=product.value;
   if(qty)state.itemQty=qty.value;
@@ -1437,97 +1514,66 @@ function entryForm(e=null){
   if(!data.products.length)return toast('Cadastre um produto primeiro.');
   const initialProduct=data.products.find(p=>p.id===e?.productId)||data.products[0];
   const initialUnit=productUnit(initialProduct);
-  modal(`<h3>${e?'Editar':'Nova'} entrada</h3><p class="modal-subtitle">Atualize fornecedor, nota, produto, quantidade e custo da mercadoria.</p><div class="form-grid">
-    <label class="full">Fornecedor<input id="eSup" list="entrySupplierList" value="${esc(e?.supplier||'')}" placeholder="Nome do fornecedor"><datalist id="entrySupplierList">${entrySuppliers().map(s=>`<option value="${esc(s)}"></option>`).join('')}</datalist></label>
-    <label>Número da nota<input id="eNf" value="${esc(e?.nf||'')}" placeholder="Ex.: 0001257"></label>
+  const currentDocType=e?.docType||((e?.nf&&String(e.nf)!=='-')?'Nota Fiscal':'Compra sem documento');
+  modal(`<h3>${e?'Editar':'Nova'} entrada</h3><p class="modal-subtitle">Altere os dados da compra. Entradas já recebidas são protegidas quando existem movimentações posteriores.</p><div class="form-grid">
+    <label class="full">Fornecedor *<input id="eSup" list="entrySupplierList" value="${esc(e?.supplier||'')}" placeholder="Nome do fornecedor ou vendedor"><datalist id="entrySupplierList">${entrySuppliers().map(s=>`<option value="${esc(s)}"></option>`).join('')}</datalist></label>
+    <label>Tipo de documento<select id="eDocType">${ENTRY_DOC_TYPES.map(x=>`<option ${x===currentDocType?'selected':''}>${x}</option>`).join('')}</select></label>
+    <label>Documento / Nota (opcional)<input id="eNf" value="${esc(e?.nf&&e.nf!=='-'?e.nf:'')}" placeholder="Deixe vazio se não houver"></label>
     <label>Data<input id="eDate" type="date" value="${e?.date||today()}"></label>
-    <label>Status<select id="eStatus"><option ${e?.status==='Recebida'?'selected':''}>Recebida</option><option ${e?.status==='Pendente'?'selected':''}>Pendente</option><option ${e?.status==='Parcial'?'selected':''}>Parcial</option></select></label>
+    <label>Pagamento<select id="ePayment">${ENTRY_PAYMENT_TYPES.map(x=>`<option ${x===(e?.payment||'PIX')?'selected':''}>${x}</option>`).join('')}</select></label>
+    <label>Status<select id="eStatus"><option ${e?.status==='Recebida'?'selected':''}>Recebida</option><option ${e?.status==='Pendente'?'selected':''}>Pendente</option></select></label>
     <label class="full">Produto<select id="eProd">${data.products.map(p=>`<option value="${p.id}" ${p.id===e?.productId?'selected':''}>${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select></label>
     <label>Quantidade<div class="edit-unit-control"><input id="eQty" type="number" min="${isFractionalUnit(initialUnit)?'0.001':'1'}" step="${isFractionalUnit(initialUnit)?'0.001':'1'}" value="${e?.qty??1}"><span id="eUnit">${esc(initialUnit)}</span></div></label>
     <label>Custo unitário<input id="eCost" type="number" step="0.01" min="0" value="${e?.cost??0}"></label>
-    <label class="full">Observações<input id="eObs" value="${esc(e?.obs||'')}" placeholder="Condição de pagamento, observações internas..."></label>
+    <label class="full">Observações<input id="eObs" value="${esc(e?.obs||'')}" placeholder="Observações internas..."></label>
   </div><div class="stock-modal-actions"><button class="btn outline" id="cancelEntry">Cancelar</button><button class="btn primary" id="saveEntry">Salvar entrada</button></div>`);
   const syncEntryUnit=()=>{
-    const p=data.products.find(x=>x.id===$('#eProd').value);
-    if(!p)return;
+    const p=data.products.find(x=>x.id===$('#eProd').value);if(!p)return;
     const u=productUnit(p), fractional=isFractionalUnit(u);
-    $('#eQty').min=fractional?'0.001':'1';
-    $('#eQty').step=fractional?'0.001':'1';
-    $('#eUnit').textContent=u;
+    $('#eQty').min=fractional?'0.001':'1';$('#eQty').step=fractional?'0.001':'1';$('#eUnit').textContent=u;
   };
   $('#eProd').onchange=syncEntryUnit;
   $('#cancelEntry').onclick=closeModal;
-  $('#saveEntry').onclick=()=>{
-    const p=data.products.find(x=>x.id===$('#eProd').value);
-    if(!p)return toast('Selecione um produto.');
+  $('#saveEntry').onclick=async()=>{
+    const p=data.products.find(x=>x.id===$('#eProd').value);if(!p)return toast('Selecione um produto.');
     const min=isFractionalUnit(productUnit(p))?0.001:1;
     const q=Math.max(min,Number($('#eQty').value||min));
     const cost=Math.max(0,Number($('#eCost').value||0));
-    const supplier=$('#eSup').value.trim()||'-';
+    const supplier=$('#eSup').value.trim();
     const status=$('#eStatus').value;
+    const date=$('#eDate').value;
+    if(!supplier||!date)return toast('Informe fornecedor e data.');
     if(q<=0)return toast('Informe uma quantidade válida.');
-
+    const docType=$('#eDocType').value;
+    const nf=$('#eNf').value.trim()||entryDocumentCode(date);
+    const payment=$('#ePayment').value;
     if(e){
-      const oldProduct=data.products.find(x=>x.id===e.productId);
-      const oldQty=Number(e.qty||0);
-
-      // desfaz o efeito antigo no estoque
-      if(e.status==='Recebida'&&oldProduct){
-        oldProduct.stock=Math.max(0,Number(oldProduct.stock||0)-oldQty);
+      const stockChanged=e.productId!==p.id||Number(e.qty||0)!==Number(q)||Number(e.cost||0)!==Number(cost)||e.status!==status;
+      if(e.status==='Recebida'&&stockChanged){
+        const check=entryCanReverse(e);if(!check.ok)return toast(check.msg);
+        reverseReceivedEntryFromProduct(e);
       }
-
-      // aplica o novo efeito
-      if(status==='Recebida'){
-        p.stock=Number(p.stock||0)+q;
-      }
-
-      Object.assign(e,{
-        nf:$('#eNf').value.trim()||'-',
-        date:$('#eDate').value,
-        supplier,
-        product:p.name,
-        productId:p.id,
-        unit:productUnit(p),
-        qty:Number(q.toFixed(3)),
-        cost,
-        status,
-        obs:$('#eObs').value.trim()
-      });
+      Object.assign(e,{nf,docType,documentDisplay:docType==='Compra sem documento'?nf:`${docType}: ${nf}`,date,supplier,payment,product:p.name,productId:p.id,unit:productUnit(p),qty:Number(q.toFixed(3)),cost,status,obs:$('#eObs').value.trim()});
+      if(status==='Recebida'&&stockChanged)applyReceivedEntryToProduct(e);
+      syncEntryLinkedExpense(e);
     }else{
-      if(status==='Recebida')p.stock=Number(p.stock||0)+q;
-      data.entries.push({
-        id:uid('ENT'),
-        nf:$('#eNf').value.trim()||'-',
-        date:$('#eDate').value,
-        supplier,
-        product:p.name,
-        productId:p.id,
-        unit:productUnit(p),
-        qty:Number(q.toFixed(3)),
-        cost,
-        status,
-        obs:$('#eObs').value.trim()
-      });
+      const obj={id:uid('ENT'),groupId:uid('CMP'),nf,docType,documentDisplay:docType==='Compra sem documento'?nf:`${docType}: ${nf}`,date,supplier,payment,product:p.name,productId:p.id,unit:productUnit(p),qty:Number(q.toFixed(3)),cost,status,obs:$('#eObs').value.trim()};
+      if(status==='Recebida')applyReceivedEntryToProduct(obj);
+      data.entries.push(obj);
     }
-
-    save();
-    closeModal();
-    toast(e?'Entrada atualizada com sucesso.':'Entrada cadastrada com sucesso.');
-    renderEntradas();
+    const ok=await persistNow();closeModal();renderEntradas();toast(ok?(e?'Entrada atualizada com sucesso.':'Entrada cadastrada com sucesso.'):'Alteração feita localmente, mas houve falha ao sincronizar com o Supabase.');
   };
 }
-function receiveEntry(entry){
+async function receiveEntry(entry){
   if(!entry||entry.status==='Recebida')return;
-  const p=data.products.find(x=>x.id===entry.productId);
-  if(p)p.stock=Number(p.stock||0)+Number(entry.qty||0);
+  applyReceivedEntryToProduct(entry);
   entry.status='Recebida';
-  save();renderEntradas();toast('Mercadoria recebida e estoque atualizado.');
+  const ok=await persistNow();renderEntradas();toast(ok?'Mercadoria recebida, estoque e custo médio atualizados.':'Recebimento salvo localmente, mas houve falha ao sincronizar.');
 }
-
 
 function expenseForm(e=null){
   const categories=(data.expenseCategories&&data.expenseCategories.length?data.expenseCategories:[...blank.expenseCategories]).slice().sort((a,b)=>a.localeCompare(b,'pt-BR'));
-  modal(`<h3>${e?'Editar':'Nova'} despesa</h3><div class="form-grid"><label>Data<input id="xDate" type="date" value="${e?.date||today()}"></label><label>Tipo<select id="xType"><option ${e?.type==='Fixa'?'selected':''}>Fixa</option><option ${e?.type!=='Fixa'?'selected':''}>Variável</option></select></label><label>Categoria<select id="xCat">${categories.map(x=>`<option ${x===e?.category?'selected':''}>${x}</option>`).join('')}</select></label><label>Status<select id="xStatus"><option ${e?.status==='Paga'?'selected':''}>Paga</option><option ${e?.status==='Pendente'?'selected':''}>Pendente</option><option ${e?.status==='Vencida'?'selected':''}>Vencida</option></select></label><label class="full">Descrição<input id="xDesc" value="${esc(e?.description||'')}" placeholder="Ex.: Conta de energia elétrica - Maio/2025"></label><label>Fornecedor<input id="xSup" value="${esc(e?.supplier||'')}" placeholder="Fornecedor ou favorecido"></label><label>Pagamento<select id="xPay">${['PIX','Transferência','Cartão de Crédito','Dinheiro','Boleto'].map(x=>`<option ${x===e?.payment?'selected':''}>${x}</option>`).join('')}</select></label><label class="full">Valor<input id="xValue" type="number" step="0.01" value="${e?.value??0}"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelExpense">Cancelar</button><button class="btn primary" id="saveExpense">Salvar despesa</button></div>`);
+  modal(`<h3>${e?'Editar':'Nova'} despesa</h3><div class="form-grid"><label>Data<input id="xDate" type="date" value="${e?.date||today()}"></label><label>Tipo<select id="xType"><option ${e?.type==='Fixa'?'selected':''}>Fixa</option><option ${e?.type!=='Fixa'?'selected':''}>Variável</option></select></label><label>Categoria<select id="xCat">${categories.map(x=>`<option ${x===e?.category?'selected':''}>${x}</option>`).join('')}</select></label><label>Status<select id="xStatus"><option ${e?.status==='Paga'?'selected':''}>Paga</option><option ${e?.status==='Pendente'?'selected':''}>Pendente</option><option ${e?.status==='Vencida'?'selected':''}>Vencida</option></select></label><label class="full">Descrição<input id="xDesc" value="${esc(e?.description||'')}" placeholder="Ex.: Conta de energia elétrica - Maio/2025"></label><label>Fornecedor<input id="xSup" value="${esc(e?.supplier||'')}" placeholder="Fornecedor ou favorecido"></label><label>Pagamento<select id="xPay">${['PIX','Transferência','Cartão de Débito','Cartão de Crédito','Dinheiro','Boleto','Prazo'].map(x=>`<option ${x===e?.payment?'selected':''}>${x}</option>`).join('')}</select></label><label class="full">Valor<input id="xValue" type="number" step="0.01" value="${e?.value??0}"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelExpense">Cancelar</button><button class="btn primary" id="saveExpense">Salvar despesa</button></div>`);
   $('#cancelExpense').onclick=closeModal;
   $('#saveExpense').onclick=()=>{
     const v=+$('#xValue').value||0;
@@ -1541,58 +1587,55 @@ function expenseForm(e=null){
   }
 }
 function renderEntradas(){
-  const state=renderEntradas.state||{supplier:'',nf:'',date:today(),obs:'',items:[]};
-  renderEntradas.state=state;
+  const state=renderEntradas.state||entryDraftDefault();
+  renderEntradas.state={...entryDraftDefault(),...state};
   const totalValue=(data.entries||[]).reduce((a,b)=>a+entryTotal(b),0);
   const activeSuppliers=new Set((data.entries||[]).map(e=>e.supplier).filter(Boolean)).size;
-  const replacementCost=(data.entries||[]).reduce((a,b)=>a+entryTotal(b),0);
   const pendingNotes=entryPendingCount();
   const recent=(data.entries||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.id).localeCompare(String(a.id))).slice(0,8);
-  const supplierTotals={};
-  const cutoff=new Date(Date.now()-29*86400000);
+  const supplierTotals={};const cutoff=new Date(Date.now()-29*86400000);
   (data.entries||[]).forEach(e=>{const dt=e.date?new Date(e.date+'T00:00:00'):null;if(dt&&dt>=cutoff)supplierTotals[e.supplier||'Sem fornecedor']=(supplierTotals[e.supplier||'Sem fornecedor']||0)+entryTotal(e)});
-  const topSuppliers=Object.entries(supplierTotals).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const supplierMax=Math.max(1,...topSuppliers.map(x=>x[1]),1);
-  const categoryTotals={};
-  (data.entries||[]).forEach(e=>{const c=entryCategory(e);categoryTotals[c]=(categoryTotals[c]||0)+entryTotal(e)});
-  let categoryEntries=Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1]);
-  if(categoryEntries.length>6){const head=categoryEntries.slice(0,5);const rest=categoryEntries.slice(5).reduce((s,x)=>s+x[1],0);categoryEntries=[...head,['Outros',rest]]}
-  const catTotal=Math.max(0,categoryEntries.reduce((s,x)=>s+x[1],0));
-  const catColors=['#0b7b49','#4ea969','#a1cc6c','#efae35','#b97a44','#c7ceca'];
-  let acc=0;
-  const conic=categoryEntries.length?categoryEntries.map((x,i)=>{const start=acc;acc+=x[1]/catTotal*100;return `${catColors[i%catColors.length]} ${start}% ${acc}%`}).join(', '):'#e9efeb 0 100%';
-  const draftRows=state.items.map((item,i)=>`<tr><td><div class="entry-draft-product">${item.photo?`<img src="${item.photo}" class="stock-thumb" alt="${esc(item.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(item.name)}</strong><small>${esc(item.code||item.id)}</small></div></div></td><td>${qtyLabel(item.qty,item.unit||'un')}</td><td>${money(item.cost)}</td><td><strong>${money(item.qty*item.cost)}</strong></td><td><button class="icon-btn danger" data-draft-remove="${i}">${ic('trash')}</button></td></tr>`).join('')||`<tr><td colspan="5"><div class="small-empty">Nenhum produto adicionado à entrada.</div></td></tr>`;
+  const topSuppliers=Object.entries(supplierTotals).sort((a,b)=>b[1]-a[1]).slice(0,5);const supplierMax=Math.max(1,...topSuppliers.map(x=>x[1]),1);
+  const categoryTotals={};(data.entries||[]).forEach(e=>{const c=entryCategory(e);categoryTotals[c]=(categoryTotals[c]||0)+entryTotal(e)});
+  let categoryEntries=Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1]);if(categoryEntries.length>6){const head=categoryEntries.slice(0,5);const rest=categoryEntries.slice(5).reduce((s,x)=>s+x[1],0);categoryEntries=[...head,['Outros',rest]]}
+  const catTotal=Math.max(0,categoryEntries.reduce((s,x)=>s+x[1],0));const catColors=['#0b7b49','#4ea969','#a1cc6c','#efae35','#b97a44','#c7ceca'];let acc=0;
+  const conic=categoryEntries.length?categoryEntries.map((x,i)=>{const start=acc;acc+=catTotal?x[1]/catTotal*100:0;return `${catColors[i%catColors.length]} ${start}% ${acc}%`}).join(', '):'#e9efeb 0 100%';
+  const draftTotal=(state.items||[]).reduce((s,item)=>s+Number(item.qty||0)*Number(item.cost||0),0);
+  const draftRows=(state.items||[]).map((item,i)=>`<tr><td><div class="entry-draft-product">${item.photo?`<img src="${item.photo}" class="stock-thumb" alt="${esc(item.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(item.name)}</strong><small>${esc(item.code||item.id)}</small></div></div></td><td>${qtyLabel(item.qty,item.unit||'un')}</td><td>${money(item.cost)}</td><td><strong>${money(item.qty*item.cost)}</strong></td><td><button class="icon-btn danger" data-draft-remove="${i}">${ic('trash')}</button></td></tr>`).join('')||`<tr><td colspan="5"><div class="small-empty">Nenhum produto adicionado à entrada.</div></td></tr>`;
   $('#page').innerHTML=`
   <div class="grid entry-kpis">
-    <article class="card hover stock-stat-card"><div class="stock-stat-icon green">${ic('tray')}</div><div class="stock-stat-copy"><small>Entradas do Mês</small><strong>${money(totalValue)}</strong><div class="trend">Mercadorias registradas no período</div></div><div class="stock-stat-bars"></div></article>
+    <article class="card hover stock-stat-card"><div class="stock-stat-icon green">${ic('tray')}</div><div class="stock-stat-copy"><small>Entradas Registradas</small><strong>${money(totalValue)}</strong><div class="trend">Valor das mercadorias lançadas</div></div><div class="stock-stat-bars"></div></article>
     <article class="card hover stock-stat-card"><div class="stock-stat-icon emerald">${ic('users')}</div><div class="stock-stat-copy"><small>Fornecedores Ativos</small><strong>${activeSuppliers}</strong><div class="trend neutral">Baseado nas entradas lançadas</div></div><div class="stock-stat-bars green"></div></article>
-    <article class="card hover stock-stat-card"><div class="stock-stat-icon amber">${ic('wallet')}</div><div class="stock-stat-copy"><small>Custo de Reposição</small><strong>${money(replacementCost)}</strong><div class="trend">Soma dos custos unitários lançados</div></div><div class="stock-stat-bars amber"></div></article>
-    <article class="card hover stock-stat-card"><div class="stock-stat-icon rose">${ic('report')}</div><div class="stock-stat-copy"><small>Notas Pendentes</small><strong>${pendingNotes}</strong><div class="trend ${pendingNotes?'warn':'neutral'}">${pendingNotes?'+ notas aguardando recebimento':'Nenhuma nota pendente'}</div></div><div class="stock-stat-bars rose"></div></article>
+    <article class="card hover stock-stat-card"><div class="stock-stat-icon amber">${ic('wallet')}</div><div class="stock-stat-copy"><small>Compra em Digitação</small><strong>${money(draftTotal)}</strong><div class="trend neutral">${state.items.length} item(ns) no lançamento</div></div><div class="stock-stat-bars amber"></div></article>
+    <article class="card hover stock-stat-card"><div class="stock-stat-icon rose">${ic('report')}</div><div class="stock-stat-copy"><small>Pendentes de Recebimento</small><strong>${pendingNotes}</strong><div class="trend ${pendingNotes?'warn':'neutral'}">${pendingNotes?'Aguardando chegada da mercadoria':'Nenhuma compra pendente'}</div></div><div class="stock-stat-bars rose"></div></article>
   </div>
   <div class="entry-layout">
     <div class="card entry-table-card">
-      <div class="entry-section-head"><div><h2>Últimas Entradas</h2><p>Compras, notas fiscais e recebimento de mercadorias cadastradas.</p></div><a href="#" id="viewAllEntries">Ver todas →</a></div>
-      <div class="table-wrap entry-table-wrap"><table class="table entry-table"><thead><tr><th>Nota Fiscal</th><th>Data</th><th>Fornecedor</th><th>Produto</th><th>Qtd</th><th>Custo Unit.</th><th>Custo Total</th><th>Status</th><th>Ações</th></tr></thead><tbody>${recent.map(e=>`<tr><td>${esc(e.nf||'-')}</td><td>${esc(e.date||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.product||'-')}</td><td>${esc(qtyLabel(e.qty,e.unit||productUnit(data.products.find(p=>p.id===e.productId))))}</td><td>${money(e.cost)}</td><td>${money(entryTotal(e))}</td><td>${badge(e.status||'Recebida')}</td><td><div class="stock-actions">${e.status!=='Recebida'?`<button class="icon-btn" data-receive-entry="${e.id}" title="Receber mercadoria">${ic('check')}</button>`:''}<button class="icon-btn" data-edit-entry="${e.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-entry="${e.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="9"><div class="empty stock-empty-inline">Nenhuma entrada registrada ainda.</div></td></tr>`}</tbody></table></div>
+      <div class="entry-section-head"><div><h2>Últimas Entradas</h2><p>Compras e recebimentos que movimentam o estoque.</p></div><a href="#" id="viewAllEntries">Ver todas →</a></div>
+      <div class="table-wrap entry-table-wrap"><table class="table entry-table"><thead><tr><th>Documento</th><th>Data</th><th>Fornecedor</th><th>Produto</th><th>Qtd</th><th>Custo Unit.</th><th>Total</th><th>Pagamento</th><th>Status</th><th>Ações</th></tr></thead><tbody>${recent.map(e=>`<tr><td><strong>${esc(e.nf||'-')}</strong><small class="entry-doc-type">${esc(e.docType||'Documento')}</small></td><td>${esc(e.date||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.product||'-')}</td><td>${esc(qtyLabel(e.qty,e.unit||productUnit(data.products.find(p=>p.id===e.productId))))}</td><td>${money(e.cost)}</td><td><strong>${money(entryTotal(e))}</strong></td><td>${esc(e.payment||'-')}${e.expenseId?'<small class="entry-expense-linked">Despesa vinculada</small>':''}</td><td>${badge(e.status||'Recebida')}</td><td><div class="stock-actions">${e.status!=='Recebida'?`<button class="icon-btn" data-receive-entry="${e.id}" title="Receber mercadoria">${ic('check')}</button>`:''}<button class="icon-btn" data-edit-entry="${e.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-entry="${e.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="10"><div class="empty stock-empty-inline">Nenhuma entrada registrada ainda.</div></td></tr>`}</tbody></table></div>
     </div>
     <aside class="card entry-form-card">
-      <div class="entry-form-head"><div class="entry-form-title"><span class="entry-form-icon">${ic('plus')}</span><div><h2>Nova Entrada</h2><p>Lance a nota ou registre o recebimento da mercadoria.</p></div></div></div>
+      <div class="entry-form-head"><div class="entry-form-title"><span class="entry-form-icon">${ic('plus')}</span><div><h2>Nova Entrada</h2><p>Registre uma compra, mesmo quando não houver nota fiscal.</p></div></div></div>
       <div class="entry-form-grid">
-        <label class="full"><span>Fornecedor *</span><div class="entry-inline-input"><input id="entrySupplier" list="entrySuppliersList" value="${esc(state.supplier)}" placeholder="Selecione ou digite o fornecedor"><datalist id="entrySuppliersList">${entrySuppliers().map(s=>`<option value="${esc(s)}"></option>`).join('')}</datalist><button class="btn soft" id="addSupplierBtn">${ic('plus')}Novo</button></div></label>
-        <label><span>Número da Nota *</span><input id="entryNf" value="${esc(state.nf)}" placeholder="Ex.: 0001257"></label>
-        <label><span>Data da Emissão *</span><input id="entryDate" type="date" value="${esc(state.date)}"></label>
-        <label class="full"><span>Observações (opcional)</span><textarea id="entryObs" rows="3" placeholder="Condição de pagamento, observações internas, informações adicionais...">${esc(state.obs)}</textarea></label>
+        <label class="full"><span>Fornecedor / vendedor *</span><div class="entry-inline-input"><input id="entrySupplier" list="entrySuppliersList" value="${esc(state.supplier)}" placeholder="Ex.: João, Tambasa..."><datalist id="entrySuppliersList">${entrySuppliers().map(s=>`<option value="${esc(s)}"></option>`).join('')}</datalist><button class="btn soft" id="addSupplierBtn">${ic('plus')}Novo</button></div></label>
+        <label><span>Tipo de documento</span><select id="entryDocType">${ENTRY_DOC_TYPES.map(x=>`<option ${x===state.docType?'selected':''}>${x}</option>`).join('')}</select></label>
+        <label><span>Documento / Nota <em class="entry-optional">opcional</em></span><input id="entryNf" value="${esc(state.nf)}" placeholder="Se vazio, o sistema gera um código"></label>
+        <label><span>Data *</span><input id="entryDate" type="date" value="${esc(state.date)}"></label>
+        <label><span>Forma de pagamento</span><select id="entryPayment">${ENTRY_PAYMENT_TYPES.map(x=>`<option ${x===state.payment?'selected':''}>${x}</option>`).join('')}</select></label>
+        <label class="full"><span>Observações (opcional)</span><textarea id="entryObs" rows="2" placeholder="Informações adicionais...">${esc(state.obs)}</textarea></label>
       </div>
       <div class="entry-draft-box">
-        <div class="entry-draft-head"><h3>Itens da Entrada</h3></div>
+        <div class="entry-draft-head"><h3>Itens da Compra</h3><strong>${money(draftTotal)}</strong></div>
         <div class="entry-items-grid">
-          <label class="full"><span>Produto *</span><div class="entry-inline-input entry-product-picker"><select id="entryProduct"><option value="">Selecione o produto</option>${data.products.map(p=>`<option value="${p.id}" ${p.id===state.selectedProductId?'selected':''}>${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select><button type="button" class="btn soft" id="newEntryProductBtn">${ic('plus')} Novo produto</button></div><small class="entry-field-help">Se a mercadoria ainda não existe no estoque, cadastre-a aqui sem sair da entrada.</small></label>
+          <label class="full"><span>Produto *</span><div class="entry-inline-input entry-product-picker"><select id="entryProduct"><option value="">Selecione o produto</option>${data.products.map(p=>`<option value="${p.id}" ${p.id===state.selectedProductId?'selected':''}>${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select><button type="button" class="btn soft" id="newEntryProductBtn">${ic('plus')} Novo produto</button></div><small class="entry-field-help">Produto novo pode ser cadastrado aqui com estoque inicial zero.</small></label>
           <label><span>Quantidade *</span><input id="entryQty" type="number" min="0.001" step="0.001" value="${esc(state.itemQty??'1')}"></label>
-          <label><span>Custo Unitário (R$) *</span><input id="entryCost" type="number" min="0" step="0.01" value="${esc(state.itemCost??'0')}"></label>
+          <label><span>Custo de compra unitário *</span><input id="entryCost" type="number" min="0" step="0.01" value="${esc(state.itemCost??'0')}"></label>
           <div class="entry-add-btn-wrap"><button class="btn soft entry-add-btn" id="addEntryItemBtn">${ic('plus')}Adicionar Produto</button></div>
         </div>
         <div class="table-wrap entry-draft-table-wrap"><table class="table entry-draft-table"><thead><tr><th>Produto</th><th>Quantidade</th><th>Custo Unit.</th><th>Total</th><th>Ações</th></tr></thead><tbody>${draftRows}</tbody></table></div>
       </div>
-      <div class="entry-form-actions"><button class="btn primary" id="launchEntryBtn">${ic('report')}Lançar Nota</button><button class="btn primary alt" id="receiveEntryBtn">${ic('check')}Receber Mercadoria</button><button class="btn outline" id="clearEntryDraftBtn">${ic('trash')}Limpar</button></div>
+      <div class="entry-help-box"><strong>Como funciona?</strong><span><b>Salvar pendente:</b> registra a compra sem alterar o estoque. <b>Receber:</b> acrescenta ao estoque e recalcula o custo médio. <b>Receber + despesa:</b> faz tudo isso e registra a saída financeira.</span></div>
+      <div class="entry-form-actions entry-actions-v124"><button class="btn primary" id="launchEntryBtn">${ic('report')}Salvar pendente</button><button class="btn primary alt" id="receiveEntryBtn">${ic('check')}Receber mercadoria</button><button class="btn primary entry-expense-btn" id="receiveExpenseEntryBtn">${ic('wallet')}Receber + registrar despesa</button><button class="btn outline" id="clearEntryDraftBtn">${ic('trash')}Limpar</button></div>
     </aside>
   </div>
   <div class="entry-bottom-grid">
@@ -1601,54 +1644,55 @@ function renderEntradas(){
   </div>`;
 
   $('#viewAllEntries').onclick=(e)=>{e.preventDefault();toast('A tabela já mostra as entradas mais recentes.');};
-  $('#addSupplierBtn').onclick=(e)=>{e.preventDefault();const name=prompt('Digite o nome do novo fornecedor:');if(name){$('#entrySupplier').value=name.trim()}};
+  $('#addSupplierBtn').onclick=(e)=>{e.preventDefault();const name=prompt('Digite o nome do novo fornecedor ou vendedor:');if(name){$('#entrySupplier').value=name.trim()}};
   $('#newEntryProductBtn').onclick=(e)=>{e.preventDefault();entryNewProductForm()};
-  $('#entryProduct').onchange=()=>{
-    const state=captureEntryDraftFields();
-    const p=data.products.find(x=>x.id===$('#entryProduct').value);
-    if(p&&Number($('#entryCost').value||0)===0&&Number(p.cost||0)>0){$('#entryCost').value=Number(p.cost||0);state.itemCost=$('#entryCost').value}
-  };
+  $('#entryProduct').onchange=()=>{const state=captureEntryDraftFields();const p=data.products.find(x=>x.id===$('#entryProduct').value);if(p&&Number($('#entryCost').value||0)===0&&Number(p.cost||0)>0){$('#entryCost').value=Number(p.cost||0);state.itemCost=$('#entryCost').value}};
   $('#addEntryItemBtn').onclick=()=>{
-    const p=data.products.find(x=>x.id===$('#entryProduct').value);
-    const qty=Math.max(0,Number($('#entryQty').value||0));
-    const cost=Math.max(0,Number($('#entryCost').value||0));
-    state.supplier=$('#entrySupplier').value.trim();state.nf=$('#entryNf').value.trim();state.date=$('#entryDate').value;state.obs=$('#entryObs').value.trim();
+    const p=data.products.find(x=>x.id===$('#entryProduct').value);const qty=Math.max(0,Number($('#entryQty').value||0));const cost=Math.max(0,Number($('#entryCost').value||0));
+    Object.assign(state,captureEntryDraftFields());
     if(!p||qty<=0)return toast('Selecione o produto e informe a quantidade.');
-    const found=state.items.find(x=>x.id===p.id&&x.cost===cost);
-    if(found)found.qty+=qty; else state.items.push({id:p.id,code:p.code,name:p.name,photo:p.photo||'',unit:productUnit(p),qty:Number(qty.toFixed(3)),cost});
-    state.selectedProductId='';state.itemQty='1';state.itemCost='0';
-    renderEntradas();
+    if(cost<0)return toast('Informe um custo válido.');
+    const found=state.items.find(x=>x.id===p.id&&Number(x.cost)===cost);if(found)found.qty=Number((Number(found.qty||0)+qty).toFixed(3));else state.items.push({id:p.id,code:p.code,name:p.name,photo:p.photo||'',unit:productUnit(p),qty:Number(qty.toFixed(3)),cost});
+    state.selectedProductId='';state.itemQty='1';state.itemCost='0';renderEntradas();
   };
   $$('[data-draft-remove]').forEach(btn=>btn.onclick=()=>{state.items.splice(Number(btn.dataset.draftRemove),1);renderEntradas()});
-  const saveDraft=(status)=>{
-    state.supplier=$('#entrySupplier').value.trim();state.nf=$('#entryNf').value.trim();state.date=$('#entryDate').value;state.obs=$('#entryObs').value.trim();
-    if(!state.supplier||!state.nf||!state.date)return toast('Preencha fornecedor, número da nota e data.');
+  const saveDraft=async(status,registerExpense=false)=>{
+    Object.assign(state,captureEntryDraftFields());
+    if(!state.supplier||!state.date)return toast('Informe fornecedor/vendedor e data.');
     if(!state.items.length)return toast('Adicione ao menos um produto à entrada.');
+    const groupId=uid('CMP');const nf=state.nf||entryDocumentCode(state.date);const docType=state.docType||'Compra sem documento';
+    const created=[];
     state.items.forEach(item=>{
       const p=data.products.find(x=>x.id===item.id);
-      if(status==='Recebida'&&p)p.stock=Number(p.stock||0)+Number(item.qty||0);
-      data.entries.push({id:uid('ENT'),nf:state.nf,date:state.date,supplier:state.supplier,product:item.name,productId:item.id,unit:item.unit||productUnit(p),qty:Number(item.qty||0),cost:Number(item.cost||0),status,obs:state.obs});
+      const entry={id:uid('ENT'),groupId,nf,docType,documentDisplay:docType==='Compra sem documento'?nf:`${docType}: ${nf}`,date:state.date,supplier:state.supplier,payment:state.payment||'PIX',product:item.name,productId:item.id,unit:item.unit||productUnit(p),qty:Number(item.qty||0),cost:Number(item.cost||0),status,obs:state.obs};
+      if(status==='Recebida')applyReceivedEntryToProduct(entry);data.entries.push(entry);created.push(entry);
     });
-    save();
-    renderEntradas.state={supplier:'',nf:'',date:today(),obs:'',items:[],selectedProductId:'',itemQty:'1',itemCost:'0'};
-    renderEntradas();
-    toast(status==='Recebida'?'Mercadorias recebidas e estoque atualizado.':'Nota lançada com sucesso.');
+    if(registerExpense){
+      const expenseId=uid('DES');const total=Number(created.reduce((s,e)=>s+entryTotal(e),0).toFixed(2));
+      data.expenses.push({id:expenseId,date:state.date,type:'Variável',category:'Fornecedores',description:`Compra de mercadorias • ${nf}`,supplier:state.supplier,payment:state.payment||'PIX',value:total,status:String(state.payment||'')==='Prazo'?'Pendente':'Paga',source:'entrada',entryGroupId:groupId});
+      created.forEach(e=>e.expenseId=expenseId);
+    }
+    const ok=await persistNow();
+    renderEntradas.state=entryDraftDefault();renderEntradas();
+    const msg=registerExpense?'Mercadorias recebidas, estoque/custo médio atualizados e despesa registrada.':status==='Recebida'?'Mercadorias recebidas e estoque/custo médio atualizados.':'Compra salva como pendente, sem alterar o estoque.';
+    toast(ok?msg:'Lançamento feito localmente, mas houve falha ao sincronizar com o Supabase.');
   };
-  $('#launchEntryBtn').onclick=()=>saveDraft('Pendente');
-  $('#receiveEntryBtn').onclick=()=>saveDraft('Recebida');
-  $('#clearEntryDraftBtn').onclick=()=>{renderEntradas.state={supplier:'',nf:'',date:today(),obs:'',items:[],selectedProductId:'',itemQty:'1',itemCost:'0'};renderEntradas()};
-  
+  $('#launchEntryBtn').onclick=()=>saveDraft('Pendente',false);
+  $('#receiveEntryBtn').onclick=()=>saveDraft('Recebida',false);
+  $('#receiveExpenseEntryBtn').onclick=()=>saveDraft('Recebida',true);
+  $('#clearEntryDraftBtn').onclick=()=>{renderEntradas.state=entryDraftDefault();renderEntradas()};
   $$('[data-receive-entry]').forEach(b=>b.onclick=()=>receiveEntry(data.entries.find(e=>e.id===b.dataset.receiveEntry)));
-  $$('[data-del-entry]').forEach(b=>b.onclick=()=>{
-    const e=data.entries.find(x=>x.id===b.dataset.delEntry);
-    if(!e||!confirm('Excluir esta entrada?'))return;
-    const p=data.products.find(x=>x.id===e.productId);
-    if(e.status==='Recebida'&&p)p.stock=Math.max(0,Number(p.stock||0)-Number(e.qty||0));
-    data.entries=data.entries.filter(x=>x.id!==e.id);
-    save();renderEntradas();
+  $$('[data-del-entry]').forEach(b=>b.onclick=async()=>{
+    const e=data.entries.find(x=>x.id===b.dataset.delEntry);if(!e)return;
+    if(e.status==='Recebida'){
+      const check=entryCanReverse(e);if(!check.ok)return toast(check.msg);
+      if(!confirm('Esta entrada já aumentou o estoque. Excluir irá desfazer essa quantidade. Deseja continuar?'))return;
+      reverseReceivedEntryFromProduct(e);
+    }else if(!confirm('Excluir esta entrada pendente?'))return;
+    removeEntryLinkedExpense(e);data.entries=data.entries.filter(x=>x.id!==e.id);
+    const ok=await persistNow();renderEntradas();toast(ok?'Entrada excluída com segurança.':'Entrada excluída localmente, mas houve falha ao sincronizar.');
   });
 }
-
 
 function expenseCategoryMeta(category='Outros'){
   const map={

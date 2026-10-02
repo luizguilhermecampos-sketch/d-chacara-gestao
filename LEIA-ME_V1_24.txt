@@ -1,0 +1,37 @@
+D CHÁCARA EMPÓRIO — AgroGestão v1.24
+
+MELHORIAS NA ABA ENTRADAS
+
+1. Documento / nota fiscal agora é opcional.
+   - Tipos: Nota Fiscal, Recibo, Compra sem documento e Outro.
+   - Se ficar vazio, o sistema gera automaticamente um código ENT-AAAAMMDD-XXX.
+
+2. Forma de pagamento na compra.
+   - PIX, Dinheiro, Cartão de Débito, Cartão de Crédito, Boleto, Transferência e Prazo.
+
+3. Três fluxos de entrada:
+   - Salvar pendente: não altera estoque.
+   - Receber mercadoria: aumenta estoque e recalcula custo médio.
+   - Receber + registrar despesa: além de receber, cria despesa vinculada à compra.
+
+4. Custo médio ponderado.
+   Exemplo: 2 un a R$70 + 1 un a R$100 = novo custo médio R$80/un.
+   Produtos fracionados consideram também o saldo aberto equivalente para o cálculo.
+
+5. Proteção de histórico.
+   - Entradas recebidas não podem ser excluídas/alteradas de forma destrutiva quando já existem vendas, ajustes ou recebimentos posteriores do produto.
+   - Evita estoque e custo histórico inconsistentes.
+
+6. Despesa vinculada.
+   - Compra recebida e paga pode gerar automaticamente uma despesa em Fornecedores.
+   - Se pagamento = Prazo, despesa fica Pendente; demais formas ficam Paga.
+   - Exclusão segura atualiza/remove a despesa vinculada quando aplicável.
+
+Exemplo: compra de 1 galo por R$80.
+Fornecedor: vendedor da ave
+Documento: pode ficar vazio
+Produto: Galo
+Quantidade: 1 un
+Custo: R$80
+Ação: Receber + registrar despesa
+Resultado: +1 no estoque, custo atualizado e despesa de R$80 registrada.
