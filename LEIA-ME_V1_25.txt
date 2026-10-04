@@ -1,0 +1,46 @@
+D CHÁCARA EMPÓRIO — AgroGestão v1.25
+
+MELHORIAS DE CONFIABILIDADE E SINCRONIZAÇÃO
+
+1. Proteção contra sobrescrita entre computadores
+- O app_state agora usa o updated_at como controle de versão.
+- Se outro computador salvar antes, a gravação local não sobrescreve a nuvem silenciosamente.
+- O sistema sinaliza conflito e preserva o cache local para conferência.
+
+2. Proteção de alterações pendentes
+- Alterações locais ficam marcadas como pendentes até confirmação do Supabase.
+- Se houver queda de internet, o cache local é mantido.
+- Ao voltar a conexão, a alteração pode ser reenviada com segurança quando a versão remota não mudou.
+
+3. Operações críticas
+- Ajuste manual de estoque passou a aguardar confirmação do Supabase.
+- Configurações agora aguardam confirmação antes de recarregar.
+- Restauração de configurações agora aguarda confirmação.
+- Restauração de backup agora aguarda confirmação e usa substituição global explícita.
+- Reset total agora confirma a gravação antes de recarregar.
+
+4. Indicadores
+- Produtos Mais Vendidos passam a preservar a unidade vendida (un, saco, rolo, kg, m etc.).
+- Produtos fechados e fracionados não são mais somados como se fossem a mesma grandeza.
+- Ranking passa a usar faturamento, exibindo a quantidade real vendida na unidade correta.
+- Estoque por Categoria passa a mostrar valor de custo em R$, evitando somar unidades incompatíveis.
+
+5. Fotos de produtos
+- Novas fotos ou fotos alteradas são enviadas para o Supabase Storage, bucket product-images.
+- O cadastro passa a guardar a URL pública da foto, deixando o app_state mais leve.
+- Se o Storage ainda não estiver configurado, existe fallback para manter a imagem incorporada.
+- Fotos antigas em Base64 permanecem funcionando; elas migram naturalmente quando forem editadas.
+
+6. Supabase
+- O arquivo SUPABASE_EXECUTAR_ANTES.sql agora também cria/configura o bucket product-images e as políticas necessárias.
+- É necessário executar novamente esse SQL no Supabase antes de usar o Storage da v1.25.
+
+7. Organização
+- app.js da raiz e js/app.js foram sincronizados.
+- Todas as páginas principais carregam js/app.js?v=1.25.
+
+IMPORTANTE
+Antes de publicar a v1.25:
+1. Execute novamente SUPABASE_EXECUTAR_ANTES.sql no SQL Editor do Supabase.
+2. Depois publique/mescle a branch melhorias-confiabilidade-v1-25.
+3. Faça um teste de venda, entrada, ajuste de estoque, fiado, foto de produto, backup e conflito em dois navegadores.
