@@ -88,7 +88,7 @@ async function loadCloudState(){
       if(insertError)throw insertError;
       cloudVersion=created?.updated_at||stamp;
       clearPending(cloudVersion);
-      localStorage.setItem(KEY,JSON.stringify(data));
+      saveLocalCache(false);
       cloudReady=true;cloudStatus='online';
       return;
     }
@@ -104,7 +104,7 @@ async function loadCloudState(){
         cloudStatus='syncing';
         updateCloudBadge();
         const recovered=await writeCloudState(false);
-        if(recovered)localStorage.setItem(KEY,JSON.stringify(data));
+        if(recovered)saveLocalCache(false);
         return;
       }
 
@@ -122,7 +122,7 @@ async function loadCloudState(){
     else data=structuredClone(blank);
     cloudVersion=remoteVersion;
     clearPending(remoteVersion);
-    localStorage.setItem(KEY,JSON.stringify(data));
+    saveLocalCache(false);
     cloudReady=true;cloudStatus='online';
   }catch(err){
     console.error('Supabase load:',err);
@@ -2739,7 +2739,7 @@ function renderConfiguracoes(){
     const answer=prompt('Esta ação apaga TODOS os dados compartilhados da D Chácara em TODOS os computadores. Digite RESETAR para confirmar:');
     if(answer!=='RESETAR')return toast('Reset cancelado.');
     data=structuredClone(blank);
-    localStorage.setItem(KEY,JSON.stringify(data));
+    saveLocalCache(false);
     localStorage.removeItem(PROFILE_PHOTO_KEY);
     sessionStorage.removeItem('dchacara_last_sale_id');
     cloudReady=true;
