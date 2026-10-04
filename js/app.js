@@ -1,4 +1,6 @@
 (async()=>{
+const APP_VERSION='1.25';
+console.info(`[D Chácara] AgroGestão v${APP_VERSION}`);
 const sb=window.dchacaraSupabase;
 if(!sb){document.body.innerHTML='<p style="padding:30px;font-family:sans-serif">Falha ao carregar o Supabase.</p>';return}
 const {data:{session},error:sessionError}=await sb.auth.getSession();
@@ -12,70 +14,156 @@ const profilePhoto=()=>localStorage.getItem(PROFILE_PHOTO_KEY)||'';
 const setProfilePhoto=v=>localStorage.setItem(PROFILE_PHOTO_KEY,v);
 const blank={products:[],sales:[],entries:[],expenses:[],clients:[],debts:[],payments:[],categories:['Rações','Medicamentos','Utensílios','Ferramentas','Jardinagem'],stockAdjustments:[],expenseCategories:['Fornecedores','Folha','Impostos','Energia','Frete','Manutenção','Outros'],settings:{store:'D Chácara Empório',cnpj:'',phone:'',email:'',address:'',city:'Cristalina',state:'GO',open:'07:00',close:'18:00',alerts:true,alertStock:true,alertDebts:true,backup:true,currency:'BRL',defaultMinStock:5,defaultFiadoDays:30,defaultSeller:'Luiz Silva',payPix:true,payCard:true,payCash:true,payBoleto:true,payFiado:true,lastBackup:''}};
 let data=(()=>{try{const x=JSON.parse(localStorage.getItem(KEY)||'{}');return {...structuredClone(blank),...x}}catch{return structuredClone(blank)}})();
+const VERSION_KEY='dchacara_cloud_version_v2';
+const PENDING_KEY='dchacara_pending_sync_v2';
 let cloudReady=false, cloudTimer=null, cloudSaving=false, cloudPending=false, cloudStatus='loading';
-const updateCloudBadge=()=>{const el=document.querySelector('#cloudStatus');if(!el)return;el.className='cloud-status '+cloudStatus;el.innerHTML=cloudStatus==='online'?'● Online':cloudStatus==='syncing'?'● Sincronizando':'● Offline'};
-async function loadCloudState(){
-  cloudStatus='loading';
-  try{
-    const {data:row,error}=await sb.from('app_state').select('payload,updated_at').eq('id','main').maybeSingle();
-    if(error)throw error;
-    if(row?.payload&&typeof row.payload==='object')data={...structuredClone(blank),...row.payload};
-    else {
-      data=structuredClone(blank);
-      const {error:insertError}=await sb.from('app_state').upsert({id:'main',payload:data,updated_at:new Date().toISOString()});
-      if(insertError)throw insertError;
-    }
-    localStorage.setItem(KEY,JSON.stringify(data));
-    cloudReady=true;cloudStatus='online';
-  }catch(err){console.error('Supabase load:',err);cloudReady=false;cloudStatus='offline';}
-}
-async function pushCloudState(force=false){
-  if(!cloudReady&&!force)return;
-  if(cloudSaving){cloudPending=true;return;}
-  cloudSaving=true;cloudStatus='syncing';updateCloudBadge();
-  try{
-    const {error}=await sb.from('app_state').upsert({id:'main',payload:data,updated_at:new Date().toISOString()});
-    if(error)throw error;
-    cloudReady=true;cloudStatus='online';
-  }catch(err){console.error('Supabase save:',err);cloudStatus='offline';}
-  finally{cloudSaving=false;updateCloudBadge();if(cloudPending){cloudPending=false;pushCloudState();}}
-}
-function queueCloudSave(){clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>pushCloudState(),180);}
+let cloudVersion=localStorage.getItem(VERSION_KEY)||'';
+let cloudConflict=false, conflictToastShown=false;
 
-function saveLocalCache(){
+const updateCloudBadge=()=>{
+  const el=document.querySelector('#cloudStatus');if(!el)return;
+  el.className='cloud-status '+cloudStatus;
+  el.innerHTML=cloudStatus==='online'?'● Online':cloudStatus==='syncing'?'● Sincronizando':cloudStatus==='pending'?'● Pendente':cloudStatus==='conflict'?'● Conflito — atualize':'● Offline';
+};
+const setPending=()=>{localStorage.setItem(PENDING_KEY,'1'); if(!cloudConflict){cloudStatus='pending';updateCloudBadge();}};
+const clearPending=version=>{
+  localStorage.removeItem(PENDING_KEY);
+  if(version){cloudVersion=version;localStorage.setItem(VERSION_KEY,version);}
+};
+const hasPending=()=>localStorage.getItem(PENDING_KEY)==='1';
+
+function saveLocalCache(markPending=true){
   try{
-    // Cache local leve: fotos ficam no Supabase, evitando estourar o limite do navegador.
     const cache=structuredClone(data);
-    (cache.products||[]).forEach(p=>{if(p.photo)p.photo=''});
+    // URLs do Storage são leves e permanecem no cache. Base64 é removido para não estourar o localStorage.
+    (cache.products||[]).forEach(p=>{if(typeof p.photo==='string'&&p.photo.startsWith('data:'))p.photo=''});
     localStorage.setItem(KEY,JSON.stringify(cache));
+    if(markPending)setPending();
     return true;
   }catch(err){
     console.warn('Cache local não pôde ser atualizado:',err);
     return false;
   }
 }
-const save=()=>{saveLocalCache();queueCloudSave()};
 
-async function persistNow(){
+async function writeCloudState(force=false){
+  const payload=structuredClone(data);
+  const stamp=new Date().toISOString();
+  let query=sb.from('app_state').update({payload,updated_at:stamp}).eq('id','main');
+  if(!force&&cloudVersion)query=query.eq('updated_at',cloudVersion);
+  const {data:row,error}=await query.select('updated_at').maybeSingle();
+  if(error)throw error;
+  if(!row){
+    cloudConflict=true;
+    cloudStatus='conflict';
+    updateCloudBadge();
+    if(!conflictToastShown){
+      conflictToastShown=true;
+      toast('Os dados foram alterados em outro computador. Suas mudanças locais foram preservadas, mas não sobrescreveram a nuvem. Atualize a página e confira os dados antes de tentar novamente.');
+    }
+    return false;
+  }
+  cloudConflict=false;
+  conflictToastShown=false;
+  cloudReady=true;
+  cloudStatus='online';
+  clearPending(row.updated_at||stamp);
+  updateCloudBadge();
+  return true;
+}
+
+async function loadCloudState(){
+  cloudStatus='loading';
+  const localSnapshot=structuredClone(data);
+  const pendingBeforeLoad=hasPending();
+  const baseVersion=localStorage.getItem(VERSION_KEY)||'';
+  try{
+    const {data:row,error}=await sb.from('app_state').select('payload,updated_at').eq('id','main').maybeSingle();
+    if(error)throw error;
+
+    if(!row){
+      data=pendingBeforeLoad?localSnapshot:structuredClone(blank);
+      const stamp=new Date().toISOString();
+      const {data:created,error:insertError}=await sb.from('app_state').upsert({id:'main',payload:data,updated_at:stamp}).select('updated_at').single();
+      if(insertError)throw insertError;
+      cloudVersion=created?.updated_at||stamp;
+      clearPending(cloudVersion);
+      saveLocalCache(false);
+      cloudReady=true;cloudStatus='online';
+      return;
+    }
+
+    const remoteVersion=row.updated_at||'';
+    if(pendingBeforeLoad){
+      // Se a nuvem ainda está exatamente na versão que originou o cache local,
+      // podemos concluir com segurança a sincronização que ficou pendente.
+      if(baseVersion&&remoteVersion===baseVersion){
+        data=localSnapshot;
+        cloudVersion=remoteVersion;
+        cloudReady=true;
+        cloudStatus='syncing';
+        updateCloudBadge();
+        const recovered=await writeCloudState(false);
+        if(recovered)saveLocalCache(false);
+        return;
+      }
+
+      // Outro computador mudou a nuvem enquanto havia alterações locais.
+      // Não sobrescreve nenhum dos lados: mantém o cache local e sinaliza conflito.
+      data=localSnapshot;
+      cloudVersion=baseVersion||remoteVersion;
+      cloudReady=true;
+      cloudConflict=true;
+      cloudStatus='conflict';
+      return;
+    }
+
+    if(row.payload&&typeof row.payload==='object')data={...structuredClone(blank),...row.payload};
+    else data=structuredClone(blank);
+    cloudVersion=remoteVersion;
+    clearPending(remoteVersion);
+    saveLocalCache(false);
+    cloudReady=true;cloudStatus='online';
+  }catch(err){
+    console.error('Supabase load:',err);
+    // Em falha de rede, mantém o cache local em vez de apagá-lo.
+    data=localSnapshot;
+    cloudReady=false;
+    cloudStatus=hasPending()?'pending':'offline';
+  }
+}
+
+async function pushCloudState(force=false){
+  if((!cloudReady&&!force)||cloudConflict&&!force)return false;
+  if(cloudSaving){cloudPending=true;return false;}
+  cloudSaving=true;cloudStatus='syncing';updateCloudBadge();
+  try{
+    return await writeCloudState(force);
+  }catch(err){
+    console.error('Supabase save:',err);
+    cloudStatus='offline';
+    updateCloudBadge();
+    return false;
+  }finally{
+    cloudSaving=false;
+    updateCloudBadge();
+    if(cloudPending&&!cloudConflict){cloudPending=false;pushCloudState();}
+  }
+}
+function queueCloudSave(){clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>pushCloudState(false),180);}
+const save=()=>{saveLocalCache(true);queueCloudSave();};
+
+async function persistNow(force=false){
   clearTimeout(cloudTimer);
   cloudTimer=null;
   while(cloudSaving)await new Promise(resolve=>setTimeout(resolve,40));
+  if(cloudConflict&&!force)return false;
   cloudSaving=true;
-  saveLocalCache();
+  saveLocalCache(true);
   cloudStatus='syncing';
   updateCloudBadge();
   try{
-    const payload=structuredClone(data);
-    const {error}=await sb.from('app_state').upsert({
-      id:'main',
-      payload,
-      updated_at:new Date().toISOString()
-    });
-    if(error)throw error;
-    cloudReady=true;
-    cloudStatus='online';
-    updateCloudBadge();
-    return true;
+    return await writeCloudState(force);
   }catch(err){
     console.error('Supabase save imediato:',err);
     cloudStatus='offline';
@@ -86,7 +174,7 @@ async function persistNow(){
   }
 }
 
-await loadCloudState();
+await loadCloudState();await loadCloudState();
 if(!Array.isArray(data.expenseCategories)||!data.expenseCategories.length){data.expenseCategories=[...blank.expenseCategories]}
 data.expenseCategories=[...new Set([...(data.expenseCategories||[]), ...(data.expenses||[]).map(e=>e.category).filter(Boolean)])];
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -103,6 +191,22 @@ function triggerDownload(blob,filename){
     setTimeout(()=>URL.revokeObjectURL(url),1500);
     return true;
   }catch(err){console.error('Falha ao baixar arquivo:',err);toast('Não foi possível gerar o arquivo para download.');return false}
+}
+const PRODUCT_IMAGE_BUCKET='product-images';
+async function storeProductPhoto(photo,productId){
+  if(!photo||typeof photo!=='string'||!photo.startsWith('data:image/'))return photo||'';
+  try{
+    const blob=await (await fetch(photo)).blob();
+    const ext=(blob.type||'image/jpeg').includes('png')?'png':'jpg';
+    const path=`${productId}/${Date.now()}.${ext}`;
+    const {error}=await sb.storage.from(PRODUCT_IMAGE_BUCKET).upload(path,blob,{cacheControl:'3600',upsert:false,contentType:blob.type||'image/jpeg'});
+    if(error)throw error;
+    const {data:urlData}=sb.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path);
+    return urlData?.publicUrl||photo;
+  }catch(err){
+    console.warn('Storage de fotos indisponível; usando imagem incorporada no cadastro.',err);
+    return photo;
+  }
 }
 function csvCell(value){
   const raw=String(value??'').replace(/\r?\n/g,' ').trim();
@@ -471,6 +575,7 @@ function productForm(product=null){
     data.categories=[...new Set(data.categories)];
 
     const obj=product||{id:uid('PRD')};
+    const storedPhoto=await storeProductPhoto(photo,obj.id);
     Object.assign(obj,{
       code:$('#pCode').value.trim()||obj.code||obj.id,
       name,
@@ -482,7 +587,7 @@ function productForm(product=null){
       min,
       cost:Math.max(0,Number($('#pCost').value||0)),
       price:Math.max(0,Number($('#pPrice').value||0)),
-      photo,
+      photo:storedPhoto,
       description:$('#pDescription').value.trim(),
       fractional:$('#pFractional').checked,
       packageSize:$('#pFractional').checked?Math.max(0,Number($('#pPackageSize').value||0)):0,
@@ -519,19 +624,26 @@ function openInventoryAdjustment(productId=''){
   if(!data.products.length)return toast('Cadastre um produto primeiro.');
   modal(`<h3>Ajuste de estoque</h3><p class="modal-subtitle">Atualize a quantidade do item sem precisar abrir uma nova entrada.</p><div class="form-grid"><label class="full">Produto<select id="adjProduct">${data.products.map(p=>`<option value="${p.id}" ${p.id===productId?'selected':''}>${esc(p.name)} • ${esc(p.code||p.id)}</option>`).join('')}</select></label><label>Tipo<select id="adjType"><option value="entrada">Entrada</option><option value="saida">Saída</option><option value="definir">Definir saldo</option></select></label><label>Quantidade<input id="adjQty" type="number" min="0" step="0.001" value="1"></label><label class="full">Motivo<input id="adjReason" placeholder="Ex.: conferência, quebra, acerto de saldo"></label></div><div class="stock-modal-actions"><button class="btn outline" id="cancelAdj">Cancelar</button><button class="btn primary" id="saveAdj">Aplicar ajuste</button></div>`);
   $('#cancelAdj').onclick=closeModal;
-  $('#saveAdj').onclick=()=>{
+  $('#saveAdj').onclick=async()=>{
     const p=data.products.find(x=>x.id===$('#adjProduct').value);
     const type=$('#adjType').value;
     const qty=Math.max(0,Number($('#adjQty').value||0));
     if(!p)return toast('Selecione um produto válido.');
     if(type!=='definir'&&qty<=0)return toast('Informe a quantidade do ajuste.');
+    const snapshot=structuredClone(data);
     if(type==='entrada')p.stock+=qty;
     else if(type==='saida')p.stock=Math.max(0,p.stock-qty);
     else p.stock=qty;
     data.stockAdjustments.push({id:uid('AJE'),date:now(),productId:p.id,product:p.name,type,qty,reason:$('#adjReason').value.trim()});
-    save();
+    const ok=await persistNow();
+    if(!ok){
+      data=snapshot;
+      saveLocalCache(false);
+      return toast(cloudConflict?'Ajuste não aplicado: existem dados mais novos em outro computador. Atualize a página.':'Ajuste não aplicado: não foi possível confirmar no Supabase.');
+    }
     closeModal();
     renderEstoque();
+    toast('Ajuste de estoque salvo com sucesso.');
   };
 }
 function openInventoryImport(){
@@ -2269,11 +2381,18 @@ function renderIndicadores(){
 
   const productMap={};
   filteredSales.forEach(s=>(s.lines||[]).forEach(l=>{
-    const key=l.productId||l.name;
-    if(!productMap[key])productMap[key]={label:l.name||'Produto',qty:0,value:0};
-    productMap[key].qty+=Number(l.qty||0);productMap[key].value+=analyticsSaleRevenue(l);
+    if(state.category!=='Todas'&&analyticsSaleCategory(l)!==state.category)return;
+    const unit=String(l.unit||'un');
+    const mode=l.stockMode==='fraction'?'fraction':'package';
+    const key=`${l.productId||l.name}::${mode}::${unit}`;
+    if(!productMap[key])productMap[key]={label:l.name||'Produto',unit,mode,qty:0,revenue:0};
+    productMap[key].qty+=Number(l.qty||0);
+    productMap[key].revenue+=analyticsSaleRevenue(l);
   }));
-  const topProducts=Object.values(productMap).sort((a,b)=>b.qty-a.qty).slice(0,6).map(x=>({label:x.label,value:x.qty,sub:`${money(x.value)} em vendas`}));
+  const topProducts=Object.values(productMap)
+    .sort((a,b)=>b.revenue-a.revenue)
+    .slice(0,6)
+    .map(x=>({label:`${x.label} • ${x.unit}`,value:x.revenue,sub:`${qtyLabel(x.qty,x.unit)} vendidos`}));
 
   const expenseMap={};
   expenses.forEach(e=>expenseMap[e.category||'Outros']=(expenseMap[e.category||'Outros']||0)+Number(e.value||0));
@@ -2284,7 +2403,9 @@ function renderIndicadores(){
     if(state.category!=='Todas'&&p.category!==state.category)return;
     if(state.supplier!=='Todos'&&p.supplier!==state.supplier)return;
     const c=p.category||'Sem categoria';
-    stockCat[c]=(stockCat[c]||0)+Number(p.stock||0);
+    const closed=Number(p.stock||0)*Number(p.cost||0);
+    const open=productHasFraction(p)&&Number(p.packageSize||0)>0?(Number(p.fractionStock||0)/Number(p.packageSize||1))*Number(p.cost||0):0;
+    stockCat[c]=(stockCat[c]||0)+closed+open;
   });
   const stockItems=Object.entries(stockCat).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,7);
 
@@ -2369,9 +2490,9 @@ function renderIndicadores(){
   </div>
 
   <div class="analytics-grid-3">
-    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Produtos Mais Vendidos</h2><p>Ranking por quantidade.</p></div></div>${analyticsHorizontalBars(topProducts,v=>`${analyticsFmt(v)} un`)}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Produtos Mais Vendidos</h2><p>Ranking por faturamento, preservando a unidade vendida.</p></div></div>${analyticsHorizontalBars(topProducts,money)}</div>
     <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Principais Despesas</h2><p>Valor por categoria.</p></div></div>${analyticsHorizontalBars(topExpenses,money)}</div>
-    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Estoque por Categoria</h2><p>Quantidade disponível.</p></div></div>${analyticsHorizontalBars(stockItems,v=>`${analyticsFmt(v)} un`)}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Estoque por Categoria</h2><p>Valor de custo disponível por categoria.</p></div></div>${analyticsHorizontalBars(stockItems,money)}</div>
   </div>
 
   <div class="analytics-grid-3">
@@ -2430,11 +2551,11 @@ function renderRelatorios(){renderIndicadores()}
 
 function ensureSettings(){
   data.settings={...blank.settings,...(data.settings||{})};
-  save();
+  saveLocalCache(false);
   return data.settings;
 }
-function downloadFullBackup(){
-  const backup={version:1,createdAt:new Date().toISOString(),app:'AgroGestão D Chácara',data};
+async function downloadFullBackup(){
+  const backup={version:2,createdAt:new Date().toISOString(),app:'AgroGestão D Chácara',data};
   const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json;charset=utf-8'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
@@ -2442,24 +2563,30 @@ function downloadFullBackup(){
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   data.settings.lastBackup=now();
-  save();
+  const ok=await persistNow();
   if(page==='configuracoes')renderConfiguracoes();
-  toast('Backup exportado com sucesso.');
+  toast(ok?'Backup exportado e registro sincronizado.':'Backup exportado, mas o horário do backup não pôde ser sincronizado.');
 }
 function restoreFullBackup(file){
   if(!file)return toast('Selecione um arquivo de backup.');
   const reader=new FileReader();
-  reader.onload=()=>{
+  reader.onload=async()=>{
     try{
       const parsed=JSON.parse(String(reader.result||'{}'));
       const restored=parsed.data||parsed;
       if(!restored||typeof restored!=='object'||!Array.isArray(restored.products)||!Array.isArray(restored.sales))throw new Error('invalid');
-      if(!confirm('Restaurar este backup? Os dados atuais serão substituídos.'))return;
+      if(!confirm('Restaurar este backup? Os dados atuais serão substituídos em todos os computadores.'))return;
+      const previous=structuredClone(data);
       data={...structuredClone(blank),...restored,settings:{...blank.settings,...(restored.settings||{})}};
-      save();
-      toast('Backup restaurado. Recarregando o sistema...');
-      setTimeout(()=>location.reload(),700);
-    }catch(e){toast('Arquivo de backup inválido.');}
+      const ok=await persistNow(true);
+      if(!ok){
+        data=previous;
+        saveLocalCache(false);
+        return toast('Não foi possível confirmar a restauração no Supabase. Os dados atuais foram preservados.');
+      }
+      toast('Backup restaurado e confirmado no Supabase.');
+      setTimeout(()=>location.reload(),450);
+    }catch(e){console.error(e);toast('Arquivo de backup inválido.');}
   };
   reader.readAsText(file,'utf-8');
 }
@@ -2565,7 +2692,7 @@ function renderConfiguracoes(){
     </aside>
   </div>`;
 
-  $('#saveSettings').onclick=()=>{
+  $('#saveSettings').onclick=async()=>{
     Object.assign(data.settings,{
       store:$('#sStore').value.trim(),
       cnpj:$('#sCnpj').value.trim(),
@@ -2588,30 +2715,38 @@ function renderConfiguracoes(){
       alertStock:$('#sAlertStock').checked,
       alertDebts:$('#sAlertDebts').checked
     });
-    save();
-    toast('Configurações salvas com sucesso.');
-    setTimeout(()=>location.reload(),450);
+    const ok=await persistNow();
+    if(!ok)return toast(cloudConflict?'Configurações não salvas: existem dados mais novos em outro computador. Atualize a página.':'Configurações não salvas: não foi possível confirmar no Supabase.');
+    toast('Configurações salvas e sincronizadas.');
+    setTimeout(()=>location.reload(),250);
   };
   $('#exportBackup').onclick=downloadFullBackup;
   $('#restoreBackup').onchange=e=>restoreFullBackup(e.target.files?.[0]);
-  $('#resetSettings').onclick=()=>{
+  $('#resetSettings').onclick=async()=>{
     if(!confirm('Restaurar apenas as configurações para o padrão?'))return;
+    const previous=structuredClone(data.settings);
     data.settings={...structuredClone(blank.settings),lastBackup:data.settings.lastBackup||''};
-    save();
-    toast('Configurações restauradas.');
-    setTimeout(()=>location.reload(),450);
+    const ok=await persistNow();
+    if(!ok){
+      data.settings=previous;
+      saveLocalCache(false);
+      return toast(cloudConflict?'Restauração não aplicada: existem dados mais novos em outro computador.':'Não foi possível confirmar a restauração no Supabase.');
+    }
+    toast('Configurações restauradas e sincronizadas.');
+    setTimeout(()=>location.reload(),250);
   };
   $('#resetAllData').onclick=async()=>{
     const answer=prompt('Esta ação apaga TODOS os dados compartilhados da D Chácara em TODOS os computadores. Digite RESETAR para confirmar:');
     if(answer!=='RESETAR')return toast('Reset cancelado.');
     data=structuredClone(blank);
-    localStorage.setItem(KEY,JSON.stringify(data));
+    saveLocalCache(false);
     localStorage.removeItem(PROFILE_PHOTO_KEY);
     sessionStorage.removeItem('dchacara_last_sale_id');
     cloudReady=true;
-    await pushCloudState(true);
-    toast('Todos os dados compartilhados foram resetados.');
-    setTimeout(()=>location.reload(),650);
+    const ok=await persistNow(true);
+    if(!ok)return toast('Não foi possível confirmar o reset no Supabase.');
+    toast('Todos os dados compartilhados foram resetados e sincronizados.');
+    setTimeout(()=>location.reload(),350);
   };
 }
 shell();({dashboard:renderDashboard,vendas:renderVendas,estoque:renderEstoque,entradas:renderEntradas,despesas:renderDespesas,fiados:renderFiados,clientes:renderClientes,indicadores:renderIndicadores,relatorios:renderRelatorios,configuracoes:renderConfiguracoes}[page]||renderDashboard)();
