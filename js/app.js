@@ -2551,11 +2551,11 @@ function renderRelatorios(){renderIndicadores()}
 
 function ensureSettings(){
   data.settings={...blank.settings,...(data.settings||{})};
-  save();
+  saveLocalCache(false);
   return data.settings;
 }
-function downloadFullBackup(){
-  const backup={version:1,createdAt:new Date().toISOString(),app:'AgroGestão D Chácara',data};
+async function downloadFullBackup(){
+  const backup={version:2,createdAt:new Date().toISOString(),app:'AgroGestão D Chácara',data};
   const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json;charset=utf-8'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
@@ -2563,9 +2563,9 @@ function downloadFullBackup(){
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   data.settings.lastBackup=now();
-  save();
+  const ok=await persistNow();
   if(page==='configuracoes')renderConfiguracoes();
-  toast('Backup exportado com sucesso.');
+  toast(ok?'Backup exportado e registro sincronizado.':'Backup exportado, mas o horário do backup não pôde ser sincronizado.');
 }
 function restoreFullBackup(file){
   if(!file)return toast('Selecione um arquivo de backup.');
