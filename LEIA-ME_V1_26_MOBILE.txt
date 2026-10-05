@@ -1,0 +1,43 @@
+D CHÁCARA EMPÓRIO — RESPONSIVO MOBILE v1.26
+
+Esta atualização é somente de interface/responsividade.
+NÃO precisa executar SQL e NÃO precisa alterar o Supabase.
+
+ARQUIVOS NOVOS:
+- css/mobile.css
+- js/mobile.js
+
+ARQUIVOS HTML ATUALIZADOS:
+- dashboard.html
+- vendas.html
+- estoque.html
+- entradas.html
+- despesas.html
+- fiados.html
+- clientes.html
+- indicadores.html
+- configuracoes.html
+
+COMO ATUALIZAR NO GITHUB:
+1. Adicione css/mobile.css dentro da pasta css.
+2. Adicione js/mobile.js dentro da pasta js.
+3. Substitua os 9 arquivos HTML pelos que estão neste ZIP.
+4. Não altere js/app.js.
+5. Não altere css/pages.css.
+6. Não altere o Supabase.
+7. Aguarde o GitHub Pages atualizar e, no celular, feche/reabra a página ou limpe o cache.
+
+O QUE MUDA NO CELULAR:
+- Menu lateral vira menu gaveta/hambúrguer.
+- Cabeçalho fica compacto.
+- Cards passam para 2 ou 1 coluna.
+- Formulários ficam em uma coluna.
+- Vendas ficam mais confortáveis para toque.
+- Tabelas ganham rolagem horizontal.
+- Filtros e botões se reorganizam.
+- Indicadores e gráficos passam para uma coluna.
+- Modais ocupam melhor a tela.
+- Inputs usam tamanho adequado para evitar zoom automático em celulares.
+
+ROLLBACK:
+Se não gostar, remova css/mobile.css e js/mobile.js e volte os HTMLs antigos da v1.25.
