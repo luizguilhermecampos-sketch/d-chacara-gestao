@@ -1,0 +1,15 @@
+D CHÁCARA EMPÓRIO — VENDAS v1.29
+
+Projeto completo para publicação no GitHub, gerado a partir do ZIP original enviado em 15/10/2026.
+
+Melhorias de Vendas:
+- Campo de desconto digitável sem perda de foco, em reais ou porcentagem, com cálculo em tempo real.
+- Limites de desconto para evitar valores negativos e manutenção do formato monetário salvo.
+- Venda fracionada de produtos com separação de preço, saldo e seletor de modalidade.
+- Atalhos de peso de 250g, 500g, 1kg e 2kg, respeitando os saldos do estoque e a rotina existente de abertura de embalagens.
+- Cores, cartões, sombras, realces, botões e animações sutis, com preferência de movimento reduzido respeitada.
+- Campo recebido continua editável enquanto troco é recalculado.
+
+Limpeza: cópias .txt e arquivos duplicados na raiz foram excluídos apenas quando havia cópia idêntica nas pastas efetivamente referenciadas pelo HTML. Foram mantidos index.html, telas, CSS/JS em diretórios, Supabase, SQL e imagens ativas.
+
+ATENÇÃO: faça backup do GitHub antes da atualização. Este é um pacote completo, mas sem validação de vendas reais em conexão ao Supabase. Teste em ambiente seguro antes de usar no caixa.

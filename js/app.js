@@ -1147,7 +1147,8 @@ function renderVendas(){
   const grandTotal=()=>Math.max(0,subtotal()-discounts());
   const salesToday=()=>data.sales.filter(s=>(s.date||'').slice(0,10)===today());
   const draw=()=>{
-    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.available)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.available,x.unit||productUnit(x))}</td><td><div class="qty kg-qty"><button data-dec="${i}" title="Diminuir">−</button><div class="qty-input-wrap"><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" step="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" value="${x.qty}"><span class="qty-unit">${esc(x.unit||productUnit(x))}</span></div><button data-inc="${i}" title="Aumentar">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><input class="mini-input" data-discount="${i}" type="number" min="0" step="0.01" value="${x.discount||0}"></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
+    cart.forEach(x=>{if(x.discountMode==='percent')x.discount=Number((x.qty*x.price*Math.min(100,Math.max(0,Number(x.discountPercent||0)))/100).toFixed(2));x.discount=Math.min(x.qty*x.price,Math.max(0,Number(x.discount||0)))});
+    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.available)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.available,x.unit||productUnit(x))}</td><td><div class="qty kg-qty"><button data-dec="${i}" title="Diminuir">−</button><div class="qty-input-wrap"><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" step="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" value="${x.qty}"><span class="qty-unit">${esc(x.unit||productUnit(x))}</span></div><button data-inc="${i}" title="Aumentar">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><div class="pdv-discount-editor"><input aria-label="Desconto do item" inputmode="decimal" data-discount="${i}" type="text" value="${x.discountMode==='percent'?Number(x.discountPercent||0).toLocaleString('pt-BR',{maximumFractionDigits:2}):Number(x.discount||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}"><select aria-label="Tipo de desconto" data-discount-mode="${i}"><option value="money" ${x.discountMode!=='percent'?'selected':''}>R$</option><option value="percent" ${x.discountMode==='percent'?'selected':''}>%</option></select></div></td><td><strong data-line-total="${i}">${money(Math.max(0,(x.qty*x.price)-Number(x.discount||0)))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
     $('#pdvCart').innerHTML=cart.length?`<div class="table-wrap sales-table-wrap"><table class="table sales-table"><thead><tr><th>Produto</th><th>Estoque</th><th>Quantidade</th><th>Valor unit.</th><th>Desconto</th><th>Total</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="pdv-empty-cart">${ic('cart')}<strong>Carrinho vazio</strong></div>`;
     const itemCount=cart.reduce((s,x)=>s+Number(x.qty||0),0);
     $('#pdvItemCount').textContent=`${cart.length} produto${cart.length===1?'':'s'}`;
@@ -1169,8 +1170,12 @@ function renderVendas(){
       if(item.stockMode==='fraction'&&q>Number(item.available||0)+1e-9){el.value=item.qty;requestOpenPackagesForSale(item.id,q,apply);return}
       apply();
     });
-    $$('#pdvCart [data-price]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.price)].price=Math.max(0,Number(el.value||0));draw()});
-    $$('#pdvCart [data-discount]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.discount)].discount=Math.max(0,Number(el.value||0));draw()});
+    const parseBR=(v)=>{let text=String(v||'').trim().replace(/\s/g,'');if(text.includes(','))text=text.replace(/\./g,'').replace(',','.');return Math.max(0,Number(text)||0)};
+    const recalcLine=(i)=>{const x=cart[i],base=Number(x.qty||0)*Number(x.price||0);if(x.discountMode==='percent'){x.discountPercent=Math.min(100,Math.max(0,Number(x.discountPercent||0)));x.discount=Number((base*x.discountPercent/100).toFixed(2))}else{x.discount=Math.min(base,Math.max(0,Number(x.discount||0)))};return Math.max(0,base-x.discount)};
+    const updateNumbers=()=>{cart.forEach((x,i)=>{const target=$(`[data-line-total="${i}"]`);const val=recalcLine(i);if(target)target.textContent=money(val)});$('#pdvSubtotal').textContent=money(subtotal());$('#pdvDiscount').textContent='- '+money(discounts());$('#pdvTotal').textContent=money(grandTotal());$('#pdvChange').textContent=money(Math.max(0,Number($('#received')?.value||0)-grandTotal()))};
+    $$('#pdvCart [data-price]').forEach(el=>{el.oninput=()=>{cart[Number(el.dataset.price)].price=Math.max(0,Number(el.value||0));updateNumbers()};el.onchange=()=>draw()});
+    $$('#pdvCart [data-discount]').forEach(el=>{el.oninput=()=>{const x=cart[Number(el.dataset.discount)],v=parseBR(el.value);if(x.discountMode==='percent')x.discountPercent=Math.min(100,v);else x.discount=v;updateNumbers()};el.onblur=()=>draw()});
+    $$('#pdvCart [data-discount-mode]').forEach(el=>el.onchange=()=>{const x=cart[Number(el.dataset.discountMode)];if(el.value==='percent'){x.discountMode='percent';x.discountPercent=(Number(x.price)*Number(x.qty))>0?Number((100*x.discount/(x.price*x.qty)).toFixed(2)):0}else{x.discountMode='money'};draw()});
     $$('.pdv-pay').forEach(b=>{b.classList.toggle('active',b.dataset.pay===payment);b.onclick=()=>{payment=b.dataset.pay;draw()}});
     const cardBox=$('#cardTypeBox'),fiadoBox=$('#fiadoBox'),receivedRow=$('#receivedRow');
     if(cardBox)cardBox.hidden=payment!=='Cartão';
@@ -1185,7 +1190,7 @@ function renderVendas(){
     const initialChoice=initialChoices.find(x=>x.mode===quickSaleMode)||initialChoices[0];
     const mode=initialChoice.mode;
     const minQty=isFractionalUnit(initialChoice.unit)?0.001:1;
-    const qty=Math.max(minQty,Number($('#quickQty').value||minQty));
+    const rawQty=Number($('#quickQty').value||minQty);const qty=Number(Math.max(minQty,isFractionalUnit(initialChoice.unit)?rawQty:Math.floor(rawQty)).toFixed(3));
     const key=`${p.id}:${mode}`;
     const current=cart.find(x=>x.cartKey===key),already=current?current.qty:0;
     const desired=already+qty;
@@ -1194,7 +1199,7 @@ function renderVendas(){
       if(desired>Number(choice.available||0)+1e-9)return toast(`Quantidade maior que o estoque disponível (${qtyLabel(choice.available,choice.unit)}).`);
       if(current){current.qty=Number(desired.toFixed(3));current.available=choice.available;}
       else cart.push({...p,cartKey:key,stockMode:choice.mode,unit:choice.unit,available:choice.available,qty:Number(qty.toFixed(3)),price:choice.price,discount:0});
-      $('#productSearch').value='';$('#quickQty').value=1;quickSaleMode='package';draw();
+      $('#productSearch').value='';$('#quickQty').value=1;quickSaleMode='package';syncQuickUnit();draw();
     };
     if(mode==='fraction'&&desired>Number(initialChoice.available||0)+1e-9){requestOpenPackagesForSale(p.id,desired,commit);return}
     commit();
@@ -1205,7 +1210,7 @@ function renderVendas(){
     <div class="pdv-toolbar-title"><div class="pdv-icon-title">${ic('cart')}</div><div><h2>Nova venda</h2><p>Selecione os produtos, confira os valores e finalize o atendimento.</p></div></div>
     <div class="pdv-product-line">
       <label class="pdv-product-field"><span>Produto</span><div class="pdv-search pdv-search-custom"><i>${ic('report')}</i><input id="productSearch" autocomplete="off" placeholder="Buscar por nome ou código do produto..."></div><div id="productSuggestions" class="product-suggestions" hidden></div></label>
-      <label class="pdv-quick-qty"><span>Quantidade / forma de venda</span><div class="pdv-qty-control"><input id="quickQty" type="number" min="0.001" step="0.001" value="1"><select id="quickSaleUnit" class="pdv-unit-select"><option value="package">un</option></select></div></label>
+      <label class="pdv-quick-qty"><span>Quantidade / forma de venda</span><div class="pdv-qty-control"><input id="quickQty" type="number" min="0.001" step="0.001" value="1"><select id="quickSaleUnit" class="pdv-unit-select"><option value="package">Unidade</option></select></div><small id="pdvUnitInfo" class="pdv-unit-info">Selecione um produto para consultar preço e estoque.</small><div id="pdvWeightShortcuts" class="pdv-weight-shortcuts" hidden><button type="button" data-weight="0.25">250 g</button><button type="button" data-weight="0.5">500 g</button><button type="button" data-weight="1">1 kg</button><button type="button" data-weight="2">2 kg</button></div></label>
       <button id="addProductBtn" class="pdv-launch-product">${ic('plus')}Lançar produto</button>
     </div>
     <div class="pdv-customer-row">
@@ -1234,7 +1239,17 @@ function renderVendas(){
     <div class="card pdv-recent"><div class="pdv-side-title small">${ic('report')} <h2>Últimas vendas</h2></div><div class="pdv-recent-wrap"><table><thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pgto.</th><th>Ações</th></tr></thead><tbody>${recentRows||`<tr><td colspan="6">Nenhuma venda ainda.</td></tr>`}</tbody></table></div></div>
   </aside></div>`;
   $('#addProductBtn').onclick=addProduct;
-  const syncQuickUnit=()=>{const p=findProduct($('#productSearch').value);const sel=$('#quickSaleUnit');if(!p){sel.innerHTML='<option value="package">un</option>';quickSaleMode='package';return;}const choices=productSaleUnits(p);sel.innerHTML=choices.map(c=>{const canOpen=c.mode==='fraction'&&Number(c.available||0)<=0&&Number(p.stock||0)>0;return `<option value="${c.mode}">${esc(c.unit)} • ${c.mode==='fraction'?'fracionado':'inteiro'} • ${money(c.price)} • disp. ${qtyLabel(c.available,c.unit)}${canOpen?' • abrir '+qtyLabel(p.packageSize,p.fractionUnit):''}</option>`}).join('');let c=choices.find(x=>x.mode===quickSaleMode)||choices.find(x=>x.available>0)||choices[0];quickSaleMode=c.mode;sel.value=quickSaleMode;$('#quickQty').step=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').min=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').value=isFractionalUnit(c.unit)?'0.5':'1';};
+  const syncQuickUnit=(preserve=false)=>{
+    const p=findProduct($('#productSearch').value),sel=$('#quickSaleUnit'),info=$('#pdvUnitInfo'),shortcuts=$('#pdvWeightShortcuts');
+    if(!p){sel.innerHTML='<option value="package">Unidade</option>';quickSaleMode='package';info.textContent='Selecione um produto para consultar preço e estoque.';shortcuts.hidden=true;return}
+    const choices=productSaleUnits(p);
+    sel.innerHTML=choices.map(c=>`<option value="${c.mode}">${c.mode==='fraction'?`Fracionado (${esc(c.unit)})`:`Embalagem (${esc(c.unit)})`}</option>`).join('');
+    const c=choices.find(x=>x.mode===quickSaleMode)||choices.find(x=>x.available>0)||choices[0];quickSaleMode=c.mode;sel.value=c.mode;
+    const qty=$('#quickQty');qty.step=isFractionalUnit(c.unit)?'0.001':'1';qty.min=isFractionalUnit(c.unit)?'0.001':'1';if(!preserve)qty.value=isFractionalUnit(c.unit)?'0.5':'1';
+    const canOpen=c.mode==='fraction'&&Number(c.available||0)<=0&&Number(p.stock||0)>0;
+    info.textContent=`${money(c.price)} / ${c.unit} • Disponível: ${qtyLabel(c.available,c.unit)}${canOpen?' • Embalagem fechada disponível para abrir':''}`;
+    shortcuts.hidden=c.mode!=='fraction';
+  };
 
   const suggestionBox=$('#productSuggestions');
   const renderProductSuggestions=()=>{
@@ -1266,12 +1281,13 @@ function renderVendas(){
   };
 
   $('#quickSaleUnit').addEventListener('change',e=>{quickSaleMode=e.target.value;syncQuickUnit()});
+  $$('#pdvWeightShortcuts [data-weight]').forEach(b=>b.onclick=()=>{$('#quickQty').value=b.dataset.weight;$('#quickQty').focus()});
   $('#productSearch').addEventListener('focus',renderProductSuggestions);
   $('#productSearch').addEventListener('input',()=>{syncQuickUnit();renderProductSuggestions()});
   $('#productSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();suggestionBox.hidden=true;addProduct()}if(e.key==='Escape')suggestionBox.hidden=true;});
   $('#productSearch').addEventListener('blur',()=>setTimeout(()=>suggestionBox.hidden=true,120));
   $('#clientSelect').onchange=e=>{selectedClient=e.target.value;draw()};
-  $('#received').oninput=draw;
+  $('#received').oninput=()=>{$('#pdvChange').textContent=money(Math.max(0,Number($('#received').value||0)-grandTotal()))};
   $('#cardType').onchange=e=>{cardType=e.target.value};
   $('#clearCart').onclick=()=>{if(cart.length&&confirm('Limpar todos os itens do carrinho?')){cart=[];draw()}};
   $('#saveBudget').onclick=()=>downloadBudgetPdf(cart,selectedClient,$('#saleObs').value.trim());

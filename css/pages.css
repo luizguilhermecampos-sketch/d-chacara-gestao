@@ -1041,3 +1041,29 @@ body[data-page="vendas"] .pdv-launch-product{
 .entry-screen-form .entry-draft-table-wrap{max-width:100%;overflow-x:auto}
 .entry-screen-form .entry-form-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:720px){.entry-screen-top{flex-direction:column;align-items:stretch}.entry-screen-form .entry-form-card{padding:17px 14px}.entry-screen-form .entry-form-grid{grid-template-columns:1fr}.entry-screen-form .entry-items-grid{grid-template-columns:1fr}.entry-screen-form .entry-add-btn{max-width:none}.entry-screen-form .entry-freight-fields{grid-template-columns:1fr}.entry-screen-form .entry-form-actions{grid-template-columns:1fr}}
+
+/* Vendas 1.28 — acabamento visual e campos de operação acessíveis */
+body[data-page="vendas"] .pdv-layout .card{border-radius:18px;box-shadow:0 8px 26px rgba(4,57,34,.07);transition:box-shadow .24s ease,transform .24s ease}
+body[data-page="vendas"] .pdv-layout .card:hover{box-shadow:0 13px 34px rgba(4,57,34,.12)}
+body[data-page="vendas"] .pdv-toolbar-card{background:linear-gradient(145deg,#fff 75%,#f1fcf5)}
+body[data-page="vendas"] .pdv-summary{background:linear-gradient(165deg,#fff 55%,#effaf3)}
+body[data-page="vendas"] .pdv-finish,body[data-page="vendas"] .pdv-launch-product{background:linear-gradient(120deg,#067343,#0c9b60);box-shadow:0 6px 16px rgba(8,128,73,.2);transition:transform .2s ease,filter .2s ease}
+body[data-page="vendas"] .pdv-finish:hover,body[data-page="vendas"] .pdv-launch-product:hover{transform:translateY(-2px);filter:brightness(1.07)}
+body[data-page="vendas"] .pdv-pay{transition:transform .2s ease,box-shadow .2s ease}
+body[data-page="vendas"] .pdv-pay:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(8,107,62,.12)}
+body[data-page="vendas"] .pdv-discount-editor{display:flex;align-items:stretch;gap:5px;min-width:136px;width:100%;max-width:175px;border:1px solid #cbded2;border-radius:10px;background:#fff;padding:3px}
+body[data-page="vendas"] .pdv-discount-editor:focus-within{border-color:#159b5d;box-shadow:0 0 0 3px rgba(21,155,93,.12)}
+body[data-page="vendas"] .pdv-discount-editor input{width:100%;min-width:55px;padding:8px;border:0;outline:none;background:transparent;font-size:14px;font-weight:650;color:#173d2c}
+body[data-page="vendas"] .pdv-discount-editor select{width:56px;flex:none;border:0;border-radius:7px;background:#e8f7ee;color:#065e38;font-weight:750;padding:4px;cursor:pointer}
+body[data-page="vendas"] .pdv-quick-qty{min-width:230px}
+body[data-page="vendas"] .pdv-unit-select{min-width:124px;max-width:160px;font-weight:700;color:#12663d}
+body[data-page="vendas"] .pdv-qty-control input{min-width:65px}
+body[data-page="vendas"] .pdv-unit-info{display:block;margin-top:7px;color:#3d7559;font-weight:600;font-size:11px;line-height:1.45}
+body[data-page="vendas"] .pdv-weight-shortcuts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+body[data-page="vendas"] .pdv-weight-shortcuts[hidden]{display:none!important}
+body[data-page="vendas"] .pdv-weight-shortcuts button{border:1px solid #cde6d6;background:#ecfaf0;color:#08683c;border-radius:9px;padding:6px 9px;font-size:11px;font-weight:750;cursor:pointer;transition:background .2s ease,transform .2s ease}
+body[data-page="vendas"] .pdv-weight-shortcuts button:hover{background:#c6eed8;transform:translateY(-1px)}
+body[data-page="vendas"] .sales-table tbody tr{transition:background .18s ease}
+body[data-page="vendas"] .sales-table tbody tr:hover{background:#f1fbf5}
+@media(max-width:780px){body[data-page="vendas"] .pdv-discount-editor{min-width:125px}body[data-page="vendas"] .pdv-quick-qty{min-width:0}}
+@media(prefers-reduced-motion:reduce){body[data-page="vendas"] .pdv-layout *{transition:none!important;animation:none!important}}
