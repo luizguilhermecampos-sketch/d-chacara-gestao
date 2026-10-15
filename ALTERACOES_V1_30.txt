@@ -1,0 +1,12 @@
+D Chácara Empório v1.30 | Revisão da aba Vendas
+
+Atualização visual do PDV e melhorias no desconto.
+- Desconto editável em reais ou porcentagem, sem recriar o campo a cada tecla.
+- O desconto percentual acompanha alterações no preço e quantidade.
+- Seletor de unidade compactado, com indicação de preço e estoque.
+- Atalhos de peso de 250g, 500g, 1kg e 2kg para produtos fracionados por kg.
+- Painel de atendimento, carrinho, pagamento e resumo com novo visual.
+- Mantidas as operações originais de Supabase, produtos, estoque, fiados, comprovantes e relatórios.
+- Mantidos arquivos existentes: nenhuma remoção sem comprovação de desuso.
+
+IMPORTANTE: Testar vendas reais em ambiente seguro antes de publicar em produção.

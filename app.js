@@ -1145,9 +1145,12 @@ function renderVendas(){
   const subtotal=()=>cart.reduce((s,x)=>s+Number(x.qty||0)*Number(x.price||0),0);
   const discounts=()=>cart.reduce((s,x)=>s+Number(x.discount||0),0);
   const grandTotal=()=>Math.max(0,subtotal()-discounts());
+  const discountDisplay=x=>x.discountMode==='percent'?Number(x.discountPercent||0):Number(x.discount||0);
+  const updateTotals=()=>{ $('#pdvSubtotal').textContent=money(subtotal());$('#pdvDiscount').textContent='- '+money(discounts());$('#pdvTotal').textContent=money(grandTotal());const received=Number($('#received')?.value||0);if($('#pdvChange'))$('#pdvChange').textContent=money(Math.max(0,received-grandTotal())); };
   const salesToday=()=>data.sales.filter(s=>(s.date||'').slice(0,10)===today());
   const draw=()=>{
-    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.available)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.available,x.unit||productUnit(x))}</td><td><div class="qty kg-qty"><button data-dec="${i}" title="Diminuir">−</button><div class="qty-input-wrap"><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" step="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" value="${x.qty}"><span class="qty-unit">${esc(x.unit||productUnit(x))}</span></div><button data-inc="${i}" title="Aumentar">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><input class="mini-input" data-discount="${i}" type="number" min="0" step="0.01" value="${x.discount||0}"></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
+    cart.forEach(x=>{if(x.discountMode==='percent')x.discount=Number((x.qty*x.price*Math.min(100,Math.max(0,Number(x.discountPercent||0)))/100).toFixed(2));else x.discount=Math.min(x.qty*x.price,Math.max(0,Number(x.discount||0)));});
+    const rows=cart.map((x,i)=>`<tr><td><div class="product-sale-cell">${x.photo?`<img class="thumb sale-photo" src="${x.photo}">`:`<span class="sale-thumb-fallback">${ic('box')}</span>`}<div><strong>${esc(x.name)}</strong><small>${esc(x.code||x.id)}</small></div></div></td><td class="${Number(x.available)<=10?'txt-warn':'txt-ok'}">${qtyLabel(x.available,x.unit||productUnit(x))}</td><td><div class="qty kg-qty"><button data-dec="${i}" title="Diminuir">−</button><div class="qty-input-wrap"><input class="qty-value" data-cart-qty="${i}" type="number" min="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" step="${isFractionalUnit(x.unit||productUnit(x))?'0.001':'1'}" value="${x.qty}"><span class="qty-unit">${esc(x.unit||productUnit(x))}</span></div><button data-inc="${i}" title="Aumentar">+</button></div></td><td><input class="mini-input" data-price="${i}" type="number" min="0" step="0.01" value="${x.price}"></td><td><div class="pdv-discount-editor"><input aria-label="Valor do desconto" data-discount="${i}" type="number" inputmode="decimal" min="0" step="0.01" value="${discountDisplay(x)}"><select aria-label="Tipo de desconto" data-discount-mode="${i}"><option value="amount" ${x.discountMode!=='percent'?'selected':''}>R$</option><option value="percent" ${x.discountMode==='percent'?'selected':''}>%</option></select></div></td><td><strong>${money((x.qty*x.price)-Number(x.discount||0))}</strong></td><td><button class="icon-btn danger" data-rm="${i}">${ic('trash')}</button></td></tr>`).join('');
     $('#pdvCart').innerHTML=cart.length?`<div class="table-wrap sales-table-wrap"><table class="table sales-table"><thead><tr><th>Produto</th><th>Estoque</th><th>Quantidade</th><th>Valor unit.</th><th>Desconto</th><th>Total</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="pdv-empty-cart">${ic('cart')}<strong>Carrinho vazio</strong></div>`;
     const itemCount=cart.reduce((s,x)=>s+Number(x.qty||0),0);
     $('#pdvItemCount').textContent=`${cart.length} produto${cart.length===1?'':'s'}`;
@@ -1169,8 +1172,10 @@ function renderVendas(){
       if(item.stockMode==='fraction'&&q>Number(item.available||0)+1e-9){el.value=item.qty;requestOpenPackagesForSale(item.id,q,apply);return}
       apply();
     });
-    $$('#pdvCart [data-price]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.price)].price=Math.max(0,Number(el.value||0));draw()});
-    $$('#pdvCart [data-discount]').forEach(el=>el.oninput=()=>{cart[Number(el.dataset.discount)].discount=Math.max(0,Number(el.value||0));draw()});
+    const refreshLine=(i)=>{const x=cart[i];const gross=Number(x.qty||0)*Number(x.price||0);if(x.discountMode==='percent'){x.discountPercent=Math.min(100,Math.max(0,Number(x.discountPercent||0)));x.discount=Number((gross*x.discountPercent/100).toFixed(2));}else{x.discount=Math.min(gross,Math.max(0,Number(x.discount||0)));}const tr=$$('#pdvCart tbody tr')[i];if(tr){const cells=tr.querySelectorAll('td');if(cells[5])cells[5].querySelector('strong').textContent=money(Math.max(0,gross-x.discount));}updateTotals();};
+    $$('#pdvCart [data-price]').forEach(el=>el.oninput=()=>{const i=Number(el.dataset.price);cart[i].price=Math.max(0,Number(el.value||0));refreshLine(i)});
+    $$('#pdvCart [data-discount]').forEach(el=>el.oninput=()=>{const i=Number(el.dataset.discount),x=cart[i];if(x.discountMode==='percent')x.discountPercent=Number(el.value||0);else x.discount=Number(el.value||0);refreshLine(i)});
+    $$('#pdvCart [data-discount-mode]').forEach(el=>el.onchange=()=>{const i=Number(el.dataset.discountMode),x=cart[i],gross=Number(x.qty||0)*Number(x.price||0);x.discountMode=el.value;x.discountPercent=x.discountMode==='percent'&&gross?Number((Number(x.discount||0)/gross*100).toFixed(2)):0;const field=$(`[data-discount=\"${i}\"]`);if(field)field.value=discountDisplay(x);refreshLine(i)});
     $$('.pdv-pay').forEach(b=>{b.classList.toggle('active',b.dataset.pay===payment);b.onclick=()=>{payment=b.dataset.pay;draw()}});
     const cardBox=$('#cardTypeBox'),fiadoBox=$('#fiadoBox'),receivedRow=$('#receivedRow');
     if(cardBox)cardBox.hidden=payment!=='Cartão';
@@ -1193,7 +1198,7 @@ function renderVendas(){
       const choice=productSaleUnits(p).find(x=>x.mode===mode)||productSaleUnits(p)[0];
       if(desired>Number(choice.available||0)+1e-9)return toast(`Quantidade maior que o estoque disponível (${qtyLabel(choice.available,choice.unit)}).`);
       if(current){current.qty=Number(desired.toFixed(3));current.available=choice.available;}
-      else cart.push({...p,cartKey:key,stockMode:choice.mode,unit:choice.unit,available:choice.available,qty:Number(qty.toFixed(3)),price:choice.price,discount:0});
+      else cart.push({...p,cartKey:key,stockMode:choice.mode,unit:choice.unit,available:choice.available,qty:Number(qty.toFixed(3)),price:choice.price,discount:0,discountMode:'amount',discountPercent:0});
       $('#productSearch').value='';$('#quickQty').value=1;quickSaleMode='package';draw();
     };
     if(mode==='fraction'&&desired>Number(initialChoice.available||0)+1e-9){requestOpenPackagesForSale(p.id,desired,commit);return}
@@ -1201,11 +1206,12 @@ function renderVendas(){
   };
   const recentRows=data.sales.slice().reverse().slice(0,6).map((s,i)=>`<tr><td>${esc(String(s.id).slice(-4))}</td><td>${esc(s.client||'Sem cliente')}</td><td>${s.items||0}</td><td>${money(s.total)}</td><td>${esc(salePaymentLabel(s))}</td><td><div class="sale-row-actions"><button class="icon-btn" data-print-sale="${s.id}" title="Imprimir comprovante">${ic('report')}</button><button class="icon-btn" data-edit-sale="${s.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-delete-sale="${s.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('');
   $('#page').innerHTML=`<div class="pdv-layout"><section class="pdv-main">
+  <div class="pdv-welcome-strip"><div class="pdv-welcome-icon">${ic('cart')}</div><div><span>PAINEL DE ATENDIMENTO</span><h2>Caixa & Vendas</h2><p>Atendimento rápido, controle de estoque e pagamento em um só lugar.</p></div><div class="pdv-welcome-status"><span class="pdv-status-dot"></span> Pronto para vender</div></div>
   <div class="card pdv-toolbar-card">
-    <div class="pdv-toolbar-title"><div class="pdv-icon-title">${ic('cart')}</div><div><h2>Nova venda</h2><p>Selecione os produtos, confira os valores e finalize o atendimento.</p></div></div>
+    <div class="pdv-toolbar-title"><div class="pdv-icon-title">${ic('cart')}</div><div><h2>01 · Nova venda</h2><p>Selecione os produtos, confira os valores e finalize o atendimento.</p></div></div>
     <div class="pdv-product-line">
       <label class="pdv-product-field"><span>Produto</span><div class="pdv-search pdv-search-custom"><i>${ic('report')}</i><input id="productSearch" autocomplete="off" placeholder="Buscar por nome ou código do produto..."></div><div id="productSuggestions" class="product-suggestions" hidden></div></label>
-      <label class="pdv-quick-qty"><span>Quantidade / forma de venda</span><div class="pdv-qty-control"><input id="quickQty" type="number" min="0.001" step="0.001" value="1"><select id="quickSaleUnit" class="pdv-unit-select"><option value="package">un</option></select></div></label>
+      <div class="pdv-quick-qty"><span>Quantidade / forma de venda</span><div class="pdv-qty-control"><input id="quickQty" aria-label="Quantidade" type="number" min="0.001" step="0.001" value="1"><select id="quickSaleUnit" aria-label="Forma de venda" class="pdv-unit-select"><option value="package">un</option></select></div><div id="quickUnitInfo" class="pdv-unit-info"></div><div id="quickFractionShortcuts" class="pdv-fraction-shortcuts" hidden><button type="button" data-fraction-qty="0.25">250 g</button><button type="button" data-fraction-qty="0.5">500 g</button><button type="button" data-fraction-qty="1">1 kg</button><button type="button" data-fraction-qty="2">2 kg</button></div></div>
       <button id="addProductBtn" class="pdv-launch-product">${ic('plus')}Lançar produto</button>
     </div>
     <div class="pdv-customer-row">
@@ -1215,9 +1221,9 @@ function renderVendas(){
     </div><div id="clientSelected"></div>
   </div>
 
-  <div class="card pdv-items"><div class="pdv-section-head"><div><h2>${ic('tray')} Itens da venda</h2><span id="pdvItemCount">0 produtos</span></div><div><button id="clearCart" class="pdv-btn subtle danger">${ic('trash')} Limpar carrinho</button></div></div><div id="pdvCart"></div><div class="pdv-note-row pdv-note-row-clean"><label><span>${ic('report')} Observações</span><input id="saleObs" placeholder="Informações adicionais sobre a venda..."></label></div></div>
+  <div class="card pdv-items"><div class="pdv-section-head"><div><h2>${ic('tray')} 02 · Carrinho de compras</h2><span id="pdvItemCount">0 produtos</span></div><div><button id="clearCart" class="pdv-btn subtle danger">${ic('trash')} Limpar carrinho</button></div></div><div id="pdvCart"></div><div class="pdv-note-row pdv-note-row-clean"><label><span>${ic('report')} Observações</span><input id="saleObs" placeholder="Informações adicionais sobre a venda..."></label></div></div>
 
-  <div class="card pdv-payment"><div class="pdv-section-head"><div><h2>${ic('wallet')} Forma de pagamento</h2></div></div>
+  <div class="card pdv-payment"><div class="pdv-section-head"><div><h2>${ic('wallet')} 03 · Forma de pagamento</h2></div></div>
     <div class="pdv-pay-grid ${paymentDefs.length>=5?'pdv-pay-grid-five':''}">
       ${paymentDefs.map((p,i)=>`<button class="pdv-pay ${i===0?'active':''} ${p.name==='Fiado'?'fiado':''}" data-pay="${p.name}"><span>${ic(p.icon)}</span><b>${p.name}</b><small>${p.desc}</small></button>`).join('')||'<div class="small-empty">Nenhuma forma de pagamento habilitada. Ative uma opção em Configurações.</div>'}
     </div>
@@ -1234,7 +1240,16 @@ function renderVendas(){
     <div class="card pdv-recent"><div class="pdv-side-title small">${ic('report')} <h2>Últimas vendas</h2></div><div class="pdv-recent-wrap"><table><thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Pgto.</th><th>Ações</th></tr></thead><tbody>${recentRows||`<tr><td colspan="6">Nenhuma venda ainda.</td></tr>`}</tbody></table></div></div>
   </aside></div>`;
   $('#addProductBtn').onclick=addProduct;
-  const syncQuickUnit=()=>{const p=findProduct($('#productSearch').value);const sel=$('#quickSaleUnit');if(!p){sel.innerHTML='<option value="package">un</option>';quickSaleMode='package';return;}const choices=productSaleUnits(p);sel.innerHTML=choices.map(c=>{const canOpen=c.mode==='fraction'&&Number(c.available||0)<=0&&Number(p.stock||0)>0;return `<option value="${c.mode}">${esc(c.unit)} • ${c.mode==='fraction'?'fracionado':'inteiro'} • ${money(c.price)} • disp. ${qtyLabel(c.available,c.unit)}${canOpen?' • abrir '+qtyLabel(p.packageSize,p.fractionUnit):''}</option>`}).join('');let c=choices.find(x=>x.mode===quickSaleMode)||choices.find(x=>x.available>0)||choices[0];quickSaleMode=c.mode;sel.value=quickSaleMode;$('#quickQty').step=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').min=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').value=isFractionalUnit(c.unit)?'0.5':'1';};
+  const syncQuickUnit=()=>{
+    const p=findProduct($('#productSearch').value),sel=$('#quickSaleUnit'),info=$('#quickUnitInfo'),shortcuts=$('#quickFractionShortcuts');
+    if(!p){sel.innerHTML='<option value="package">Embalagem (un)</option>';info.textContent='Selecione um produto para ver preço e estoque.';shortcuts.hidden=true;quickSaleMode='package';return;}
+    const choices=productSaleUnits(p);sel.innerHTML=choices.map(c=>`<option value="${c.mode}">${c.mode==='fraction'?`Fracionado (${esc(c.unit)})`:`Embalagem (${esc(c.unit)})`}</option>`).join('');
+    const c=choices.find(x=>x.mode===quickSaleMode)||choices.find(x=>x.available>0)||choices[0];quickSaleMode=c.mode;sel.value=c.mode;
+    $('#quickQty').step=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').min=isFractionalUnit(c.unit)?'0.001':'1';$('#quickQty').value=isFractionalUnit(c.unit)?'0.5':'1';
+    info.innerHTML=`<span class="pdv-unit-price">${money(c.price)} / ${esc(c.unit)}</span><span>Disponível: ${esc(qtyLabel(c.available,c.unit))}</span>`;
+    const isKg=c.mode==='fraction'&&c.unit==='kg';shortcuts.hidden=!isKg;
+  };
+  $$('#quickFractionShortcuts [data-fraction-qty]').forEach(b=>b.onclick=()=>{if(quickSaleMode!=='fraction')return;$('#quickQty').value=b.dataset.fractionQty;$$('#quickFractionShortcuts button').forEach(n=>n.classList.toggle('active',n===b));});
 
   const suggestionBox=$('#productSuggestions');
   const renderProductSuggestions=()=>{
@@ -1271,7 +1286,7 @@ function renderVendas(){
   $('#productSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();suggestionBox.hidden=true;addProduct()}if(e.key==='Escape')suggestionBox.hidden=true;});
   $('#productSearch').addEventListener('blur',()=>setTimeout(()=>suggestionBox.hidden=true,120));
   $('#clientSelect').onchange=e=>{selectedClient=e.target.value;draw()};
-  $('#received').oninput=draw;
+  $('#received').oninput=updateTotals;
   $('#cardType').onchange=e=>{cardType=e.target.value};
   $('#clearCart').onclick=()=>{if(cart.length&&confirm('Limpar todos os itens do carrinho?')){cart=[];draw()}};
   $('#saveBudget').onclick=()=>downloadBudgetPdf(cart,selectedClient,$('#saleObs').value.trim());
