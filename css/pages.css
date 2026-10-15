@@ -1015,3 +1015,13 @@ body[data-page="vendas"] .pdv-launch-product{
 .entry-actions-v124 .btn{justify-content:center;min-height:40px}
 .entry-expense-btn{background:#0b6f46!important;border-color:#0b6f46!important;color:#fff!important}
 @media(max-width:900px){.entry-actions-v124{grid-template-columns:1fr}.entry-help-box{flex-direction:column;gap:4px}}
+
+/* Entradas em lote: rateio de frete */
+.entry-freight-panel{margin:14px 0;padding:16px;border:1px solid #cce5d6;background:#f4fbf6;border-radius:14px}
+.entry-freight-panel h3{margin:0 0 12px;font-size:16px;color:#125337}
+.entry-freight-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.entry-freight-fields label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600}
+.entry-freight-fields input,.entry-freight-fields select{min-width:0;width:100%;box-sizing:border-box;padding:10px;border:1px solid #c7d8cd;border-radius:8px;background:white}
+.entry-freight-summary{display:flex;flex-wrap:wrap;gap:12px 22px;padding:12px 0;font-size:13px}
+.entry-freight-panel small{display:block;color:#52675b;line-height:1.5}
+@media(max-width:600px){.entry-freight-fields{grid-template-columns:1fr}.entry-freight-summary{flex-direction:column;gap:6px}}

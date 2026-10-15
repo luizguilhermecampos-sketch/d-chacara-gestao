@@ -1,0 +1,15 @@
+D CHÁCARA EMPÓRIO - ENTRADAS COM FRETE - V1.27
+
+ATUALIZAÇÃO: 15/10/2026
+
+Na aba Entradas, cadastre vários itens na mesma compra. Indique o peso por unidade em kg (é sugerido automaticamente quando há "25KG" no nome); informe frete total e critério de rateio.
+
+Critérios: Peso (recomendado para sacos), Valor, Quantidade. O rateio fecha exatamente em centavos, somado por item. O custo da entrada armazena custo completo, baseCost guarda custo sem frete e freightShare armazena o frete do item.
+
+Na opção Receber + registrar despesa, uma única despesa registra produtos + frete. Não registre novamente o mesmo frete em Despesas.
+
+Se já registrou a compra ou o frete em outra ocasião, confira antes de importar novamente para não duplicar entradas.
+
+INSTALAÇÃO: extraia o ZIP, mantenha estrutura de pastas e substitua os arquivos no GitHub. Faça backup do banco antes e teste uma compra pequena primeiro. Não é preciso alterar o SQL do Supabase para esta versão, pois a integração persiste os mesmos objetos de estado existentes.
+
+Arquivos principais alterados: js/app.js e css/pages.css. Cópias na raiz e cópia TXT do JS/CSS foram incluídas.

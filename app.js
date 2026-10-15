@@ -1426,7 +1426,23 @@ function entryCategory(entry){return data.products.find(p=>p.id===entry.productI
 
 const ENTRY_DOC_TYPES=['Nota Fiscal','Recibo','Compra sem documento','Outro'];
 const ENTRY_PAYMENT_TYPES=['PIX','Dinheiro','Cartão de Débito','Cartão de Crédito','Boleto','Transferência','Prazo'];
-function entryDraftDefault(){return {supplier:'',docType:'Nota Fiscal',nf:'',date:today(),payment:'PIX',obs:'',items:[],selectedProductId:'',itemQty:'1',itemCost:'0'}}
+function entryDraftDefault(){return {supplier:'',docType:'Nota Fiscal',nf:'',date:today(),payment:'PIX',obs:'',items:[],selectedProductId:'',itemQty:'1',itemCost:'0',freight:'0',freightMethod:'weight',itemWeight:'',freightPaymentIncluded:true}}
+function entryInferredWeight(name=''){
+  const match=String(name).replace(',', '.').match(/(\d+(?:\.\d+)?)\s*kg\b/i);
+  return match?Number(match[1]):0;
+}
+function entryFreightAllocation(items,freight,method='weight'){
+  const cents=Math.round(Math.max(0,Number(freight)||0)*100);
+  const bases=items.map(item=>method==='quantity'?Number(item.qty||0):method==='value'?Number(item.qty||0)*Number(item.cost||0):Number(item.qty||0)*Number(item.weight||0));
+  const sum=bases.reduce((a,b)=>a+b,0);
+  if(cents>0&&(!sum||bases.some(n=>!Number.isFinite(n)||n<0)))throw new Error('Informe o peso por unidade de todos os produtos ou escolha rateio por valor/quantidade.');
+  const raw=bases.map(n=>sum?n/sum*cents:0);
+  const portions=raw.map(n=>Math.floor(n));
+  let remainder=cents-portions.reduce((a,b)=>a+b,0);
+  const priority=raw.map((n,i)=>({i,remainder:n-portions[i]})).sort((a,b)=>b.remainder-a.remainder||a.i-b.i);
+  for(let k=0;k<remainder;k++)portions[priority[k].i]++;
+  return items.map((item,i)=>({...item,freightShare:portions[i]/100,realCost:Number(item.cost||0)+(portions[i]/100)/Number(item.qty||1)}));
+}
 function entryDocumentCode(date=today()){
   const d=String(date||today()).replace(/-/g,'');
   const seq=String(((data.entries||[]).filter(e=>String(e.date||'')===String(date||'')).length+1)).padStart(3,'0');
@@ -1512,6 +1528,10 @@ function captureEntryDraftFields(){
   if(product)state.selectedProductId=product.value;
   if(qty)state.itemQty=qty.value;
   if(cost)state.itemCost=cost.value;
+  const freight=$('#entryFreight'),method=$('#entryFreightMethod'),weight=$('#entryItemWeight');
+  if(freight)state.freight=freight.value;
+  if(method)state.freightMethod=method.value;
+  if(weight)state.itemWeight=weight.value;
   return state;
 }
 
@@ -1713,12 +1733,14 @@ function renderEntradas(){
   const catTotal=Math.max(0,categoryEntries.reduce((s,x)=>s+x[1],0));const catColors=['#0b7b49','#4ea969','#a1cc6c','#efae35','#b97a44','#c7ceca'];let acc=0;
   const conic=categoryEntries.length?categoryEntries.map((x,i)=>{const start=acc;acc+=catTotal?x[1]/catTotal*100:0;return `${catColors[i%catColors.length]} ${start}% ${acc}%`}).join(', '):'#e9efeb 0 100%';
   const draftTotal=(state.items||[]).reduce((s,item)=>s+Number(item.qty||0)*Number(item.cost||0),0);
-  const draftRows=(state.items||[]).map((item,i)=>`<tr><td><div class="entry-draft-product">${item.photo?`<img src="${item.photo}" class="stock-thumb" alt="${esc(item.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(item.name)}</strong><small>${esc(item.code||item.id)}</small></div></div></td><td>${qtyLabel(item.qty,item.unit||'un')}</td><td>${money(item.cost)}</td><td><strong>${money(item.qty*item.cost)}</strong></td><td><button class="icon-btn danger" data-draft-remove="${i}">${ic('trash')}</button></td></tr>`).join('')||`<tr><td colspan="5"><div class="small-empty">Nenhum produto adicionado à entrada.</div></td></tr>`;
+  const freightValue=Math.max(0,Number(state.freight||0));
+  let allocated=[];try{allocated=entryFreightAllocation(state.items||[],freightValue,state.freightMethod)}catch(_){allocated=(state.items||[]).map(x=>({...x,freightShare:0,realCost:x.cost}))}
+  const draftRows=allocated.map((item,i)=>`<tr><td><div class="entry-draft-product">${item.photo?`<img src="${item.photo}" class="stock-thumb" alt="${esc(item.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(item.name)}</strong><small>${esc(item.code||item.id)}</small></div></div></td><td>${qtyLabel(item.qty,item.unit||'un')}</td><td>${money(item.cost)}</td><td>${money(item.freightShare)}</td><td><strong>${money(item.realCost)}</strong></td><td><strong>${money(item.qty*item.realCost)}</strong></td><td><button class="icon-btn danger" data-draft-remove="${i}">${ic('trash')}</button></td></tr>`).join('')||`<tr><td colspan="7"><div class="small-empty">Nenhum produto adicionado à entrada.</div></td></tr>`;
   $('#page').innerHTML=`
   <div class="grid entry-kpis">
     <article class="card hover stock-stat-card"><div class="stock-stat-icon green">${ic('tray')}</div><div class="stock-stat-copy"><small>Entradas Registradas</small><strong>${money(totalValue)}</strong><div class="trend">Valor das mercadorias lançadas</div></div><div class="stock-stat-bars"></div></article>
     <article class="card hover stock-stat-card"><div class="stock-stat-icon emerald">${ic('users')}</div><div class="stock-stat-copy"><small>Fornecedores Ativos</small><strong>${activeSuppliers}</strong><div class="trend neutral">Baseado nas entradas lançadas</div></div><div class="stock-stat-bars green"></div></article>
-    <article class="card hover stock-stat-card"><div class="stock-stat-icon amber">${ic('wallet')}</div><div class="stock-stat-copy"><small>Compra em Digitação</small><strong>${money(draftTotal)}</strong><div class="trend neutral">${state.items.length} item(ns) no lançamento</div></div><div class="stock-stat-bars amber"></div></article>
+    <article class="card hover stock-stat-card"><div class="stock-stat-icon amber">${ic('wallet')}</div><div class="stock-stat-copy"><small>Compra em Digitação</small><strong>${money(draftTotal+freightValue)}</strong><div class="trend neutral">${state.items.length} item(ns) no lançamento</div></div><div class="stock-stat-bars amber"></div></article>
     <article class="card hover stock-stat-card"><div class="stock-stat-icon rose">${ic('report')}</div><div class="stock-stat-copy"><small>Pendentes de Recebimento</small><strong>${pendingNotes}</strong><div class="trend ${pendingNotes?'warn':'neutral'}">${pendingNotes?'Aguardando chegada da mercadoria':'Nenhuma compra pendente'}</div></div><div class="stock-stat-bars rose"></div></article>
   </div>
   <div class="entry-layout">
@@ -1741,10 +1763,18 @@ function renderEntradas(){
         <div class="entry-items-grid">
           <label class="full"><span>Produto *</span><div class="entry-inline-input entry-product-picker"><select id="entryProduct"><option value="">Selecione o produto</option>${data.products.map(p=>`<option value="${p.id}" ${p.id===state.selectedProductId?'selected':''}>${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select><button type="button" class="btn soft" id="newEntryProductBtn">${ic('plus')} Novo produto</button></div><small class="entry-field-help">Produto novo pode ser cadastrado aqui com estoque inicial zero.</small></label>
           <label><span>Quantidade *</span><input id="entryQty" type="number" min="0.001" step="0.001" value="${esc(state.itemQty??'1')}"></label>
-          <label><span>Custo de compra unitário *</span><input id="entryCost" type="number" min="0" step="0.01" value="${esc(state.itemCost??'0')}"></label>
+          <label><span>Custo do fornecedor / un. *</span><input id="entryCost" type="number" min="0" step="0.01" value="${esc(state.itemCost??'0')}"></label>
+          <label><span>Peso por unidade (kg)</span><input id="entryItemWeight" type="number" min="0" step="0.001" value="${esc(state.itemWeight??'')}" placeholder="Ex.: 25"></label>
           <div class="entry-add-btn-wrap"><button class="btn soft entry-add-btn" id="addEntryItemBtn">${ic('plus')}Adicionar Produto</button></div>
         </div>
-        <div class="table-wrap entry-draft-table-wrap"><table class="table entry-draft-table"><thead><tr><th>Produto</th><th>Quantidade</th><th>Custo Unit.</th><th>Total</th><th>Ações</th></tr></thead><tbody>${draftRows}</tbody></table></div>
+        <div class="table-wrap entry-draft-table-wrap"><table class="table entry-draft-table"><thead><tr><th>Produto</th><th>Quantidade</th><th>Custo fornecedor</th><th>Frete</th><th>Custo real/un.</th><th>Total real</th><th>Ações</th></tr></thead><tbody>${draftRows}</tbody></table></div>
+      </div>
+      <div class="entry-freight-panel">
+        <h3>Frete da compra</h3>
+        <div class="entry-freight-fields"><label>Frete total (R$)<input id="entryFreight" type="number" min="0" step="0.01" value="${esc(state.freight??'0')}"></label>
+        <label>Distribuir frete por<select id="entryFreightMethod"><option value="weight" ${state.freightMethod==='weight'?'selected':''}>Peso (kg)</option><option value="value" ${state.freightMethod==='value'?'selected':''}>Valor dos produtos</option><option value="quantity" ${state.freightMethod==='quantity'?'selected':''}>Quantidade</option></select></label></div>
+        <div class="entry-freight-summary"><span>Produtos: <strong>${money(draftTotal)}</strong></span><span>Frete: <strong>${money(freightValue)}</strong></span><span>Total da compra: <strong>${money(draftTotal+freightValue)}</strong></span></div>
+        <small>O frete será incorporado ao custo dos produtos. Em “Receber + registrar despesa”, a despesa inclui o frete, sem lançamento duplicado.</small>
       </div>
       <div class="entry-help-box"><strong>Como funciona?</strong><span><b>Salvar pendente:</b> registra a compra sem alterar o estoque. <b>Receber:</b> acrescenta ao estoque e recalcula o custo médio. <b>Receber + despesa:</b> faz tudo isso e registra a saída financeira.</span></div>
       <div class="entry-form-actions entry-actions-v124"><button class="btn primary" id="launchEntryBtn">${ic('report')}Salvar pendente</button><button class="btn primary alt" id="receiveEntryBtn">${ic('check')}Receber mercadoria</button><button class="btn primary entry-expense-btn" id="receiveExpenseEntryBtn">${ic('wallet')}Receber + registrar despesa</button><button class="btn outline" id="clearEntryDraftBtn">${ic('trash')}Limpar</button></div>
@@ -1758,25 +1788,27 @@ function renderEntradas(){
   $('#viewAllEntries').onclick=(e)=>{e.preventDefault();toast('A tabela já mostra as entradas mais recentes.');};
   $('#addSupplierBtn').onclick=(e)=>{e.preventDefault();const name=prompt('Digite o nome do novo fornecedor ou vendedor:');if(name){$('#entrySupplier').value=name.trim()}};
   $('#newEntryProductBtn').onclick=(e)=>{e.preventDefault();entryNewProductForm()};
-  $('#entryProduct').onchange=()=>{const state=captureEntryDraftFields();const p=data.products.find(x=>x.id===$('#entryProduct').value);if(p&&Number($('#entryCost').value||0)===0&&Number(p.cost||0)>0){$('#entryCost').value=Number(p.cost||0);state.itemCost=$('#entryCost').value}};
+  $('#entryProduct').onchange=()=>{const state=captureEntryDraftFields();const p=data.products.find(x=>x.id===$('#entryProduct').value);if(p&&Number($('#entryCost').value||0)===0&&Number(p.cost||0)>0){$('#entryCost').value=Number(p.cost||0);state.itemCost=$('#entryCost').value}if(p&&!$('#entryItemWeight').value){$('#entryItemWeight').value=entryInferredWeight(p.name)||'';state.itemWeight=$('#entryItemWeight').value}};
   $('#addEntryItemBtn').onclick=()=>{
     const p=data.products.find(x=>x.id===$('#entryProduct').value);const qty=Math.max(0,Number($('#entryQty').value||0));const cost=Math.max(0,Number($('#entryCost').value||0));
     Object.assign(state,captureEntryDraftFields());
     if(!p||qty<=0)return toast('Selecione o produto e informe a quantidade.');
     if(cost<0)return toast('Informe um custo válido.');
-    const found=state.items.find(x=>x.id===p.id&&Number(x.cost)===cost);if(found)found.qty=Number((Number(found.qty||0)+qty).toFixed(3));else state.items.push({id:p.id,code:p.code,name:p.name,photo:p.photo||'',unit:productUnit(p),qty:Number(qty.toFixed(3)),cost});
-    state.selectedProductId='';state.itemQty='1';state.itemCost='0';renderEntradas();
+    const weight=Number(state.itemWeight||entryInferredWeight(p.name)||0);if(weight<0||!Number.isFinite(weight))return toast('Informe um peso válido.');
+    const found=state.items.find(x=>x.id===p.id&&Number(x.cost)===cost&&Number(x.weight||0)===weight);if(found)found.qty=Number((Number(found.qty||0)+qty).toFixed(3));else state.items.push({id:p.id,code:p.code,name:p.name,photo:p.photo||'',unit:productUnit(p),qty:Number(qty.toFixed(3)),cost,weight});
+    state.selectedProductId='';state.itemQty='1';state.itemCost='0';state.itemWeight='';renderEntradas();
   };
   $$('[data-draft-remove]').forEach(btn=>btn.onclick=()=>{state.items.splice(Number(btn.dataset.draftRemove),1);renderEntradas()});
   const saveDraft=async(status,registerExpense=false)=>{
     Object.assign(state,captureEntryDraftFields());
     if(!state.supplier||!state.date)return toast('Informe fornecedor/vendedor e data.');
     if(!state.items.length)return toast('Adicione ao menos um produto à entrada.');
+    let items;try{items=entryFreightAllocation(state.items,Number(state.freight||0),state.freightMethod)}catch(err){return toast(err.message)}
     const groupId=uid('CMP');const nf=state.nf||entryDocumentCode(state.date);const docType=state.docType||'Compra sem documento';
     const created=[];
-    state.items.forEach(item=>{
+    items.forEach(item=>{
       const p=data.products.find(x=>x.id===item.id);
-      const entry={id:uid('ENT'),groupId,nf,docType,documentDisplay:docType==='Compra sem documento'?nf:`${docType}: ${nf}`,date:state.date,supplier:state.supplier,payment:state.payment||'PIX',product:item.name,productId:item.id,unit:item.unit||productUnit(p),qty:Number(item.qty||0),cost:Number(item.cost||0),status,obs:state.obs};
+      const entry={id:uid('ENT'),groupId,nf,docType,documentDisplay:docType==='Compra sem documento'?nf:`${docType}: ${nf}`,date:state.date,supplier:state.supplier,payment:state.payment||'PIX',product:item.name,productId:item.id,unit:item.unit||productUnit(p),qty:Number(item.qty||0),cost:Number(item.realCost||0),baseCost:Number(item.cost||0),freightShare:Number(item.freightShare||0),freightMethod:state.freightMethod,weightPerUnit:Number(item.weight||0),status,obs:state.obs};
       if(status==='Recebida')applyReceivedEntryToProduct(entry);data.entries.push(entry);created.push(entry);
     });
     if(registerExpense){
@@ -1789,6 +1821,8 @@ function renderEntradas(){
     const msg=registerExpense?'Mercadorias recebidas, estoque/custo médio atualizados e despesa registrada.':status==='Recebida'?'Mercadorias recebidas e estoque/custo médio atualizados.':'Compra salva como pendente, sem alterar o estoque.';
     toast(ok?msg:'Lançamento feito localmente, mas houve falha ao sincronizar com o Supabase.');
   };
+  $('#entryFreight').onchange=()=>{captureEntryDraftFields();renderEntradas()};
+  $('#entryFreightMethod').onchange=()=>{captureEntryDraftFields();renderEntradas()};
   $('#launchEntryBtn').onclick=()=>saveDraft('Pendente',false);
   $('#receiveEntryBtn').onclick=()=>saveDraft('Recebida',false);
   $('#receiveExpenseEntryBtn').onclick=()=>saveDraft('Recebida',true);
