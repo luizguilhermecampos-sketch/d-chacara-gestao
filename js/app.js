@@ -1638,7 +1638,9 @@ function entryNewProductForm(){
     closeModal();
     renderEntradas();
     const select=$('#entryProduct');
+    const search=$('#entryProductSearch');
     if(select)select.value=product.id;
+    if(search)search.value=product.name;
     toast(ok?'Produto cadastrado. Informe a quantidade e adicione-o à entrada.':'Produto criado localmente, mas a sincronização com o Supabase falhou.');
   };
 }
@@ -1721,6 +1723,7 @@ function expenseForm(e=null){
 function renderEntradas(){
   const state=renderEntradas.state||entryDraftDefault();
   renderEntradas.state={...entryDraftDefault(),...state};
+  const entryFormOpen=renderEntradas.formOpen===true;
   const totalValue=(data.entries||[]).reduce((a,b)=>a+entryTotal(b),0);
   const activeSuppliers=new Set((data.entries||[]).map(e=>e.supplier).filter(Boolean)).size;
   const pendingNotes=entryPendingCount();
@@ -1737,6 +1740,8 @@ function renderEntradas(){
   let allocated=[];try{allocated=entryFreightAllocation(state.items||[],freightValue,state.freightMethod)}catch(_){allocated=(state.items||[]).map(x=>({...x,freightShare:0,realCost:x.cost}))}
   const draftRows=allocated.map((item,i)=>`<tr><td><div class="entry-draft-product">${item.photo?`<img src="${item.photo}" class="stock-thumb" alt="${esc(item.name)}">`:`<div class="stock-thumb empty">${ic('camera')}</div>`}<div><strong>${esc(item.name)}</strong><small>${esc(item.code||item.id)}</small></div></div></td><td>${qtyLabel(item.qty,item.unit||'un')}</td><td>${money(item.cost)}</td><td>${money(item.freightShare)}</td><td><strong>${money(item.realCost)}</strong></td><td><strong>${money(item.qty*item.realCost)}</strong></td><td><button class="icon-btn danger" data-draft-remove="${i}">${ic('trash')}</button></td></tr>`).join('')||`<tr><td colspan="7"><div class="small-empty">Nenhum produto adicionado à entrada.</div></td></tr>`;
   $('#page').innerHTML=`
+  <div class="entry-screen ${entryFormOpen?'entry-screen-form':'entry-screen-list'}">
+  <div class="entry-screen-top"><div><h2>${entryFormOpen?'Registrar nova entrada':'Entradas de mercadorias'}</h2><p>${entryFormOpen?'Inclua vários produtos, confira o frete e finalize a compra.':'Acompanhe compras, recebimentos e fornecedores.'}</p></div>${entryFormOpen?`<button type="button" class="btn outline" id="backEntriesBtn">${ic('arrow-left')} Voltar às entradas</button>`:`<button type="button" class="btn primary" id="openEntryFormBtn">${ic('plus')} Adicionar Entrada</button>`}</div>
   <div class="grid entry-kpis">
     <article class="card hover stock-stat-card"><div class="stock-stat-icon green">${ic('tray')}</div><div class="stock-stat-copy"><small>Entradas Registradas</small><strong>${money(totalValue)}</strong><div class="trend">Valor das mercadorias lançadas</div></div><div class="stock-stat-bars"></div></article>
     <article class="card hover stock-stat-card"><div class="stock-stat-icon emerald">${ic('users')}</div><div class="stock-stat-copy"><small>Fornecedores Ativos</small><strong>${activeSuppliers}</strong><div class="trend neutral">Baseado nas entradas lançadas</div></div><div class="stock-stat-bars green"></div></article>
@@ -1748,7 +1753,7 @@ function renderEntradas(){
       <div class="entry-section-head"><div><h2>Últimas Entradas</h2><p>Compras e recebimentos que movimentam o estoque.</p></div><a href="#" id="viewAllEntries">Ver todas →</a></div>
       <div class="table-wrap entry-table-wrap"><table class="table entry-table"><thead><tr><th>Documento</th><th>Data</th><th>Fornecedor</th><th>Produto</th><th>Qtd</th><th>Custo Unit.</th><th>Total</th><th>Pagamento</th><th>Status</th><th>Ações</th></tr></thead><tbody>${recent.map(e=>`<tr><td><strong>${esc(e.nf||'-')}</strong><small class="entry-doc-type">${esc(e.docType||'Documento')}</small></td><td>${esc(e.date||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.product||'-')}</td><td>${esc(qtyLabel(e.qty,e.unit||productUnit(data.products.find(p=>p.id===e.productId))))}</td><td>${money(e.cost)}</td><td><strong>${money(entryTotal(e))}</strong></td><td>${esc(e.payment||'-')}${e.expenseId?'<small class="entry-expense-linked">Despesa vinculada</small>':''}</td><td>${badge(e.status||'Recebida')}</td><td><div class="stock-actions">${e.status!=='Recebida'?`<button class="icon-btn" data-receive-entry="${e.id}" title="Receber mercadoria">${ic('check')}</button>`:''}<button class="icon-btn" data-edit-entry="${e.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-entry="${e.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="10"><div class="empty stock-empty-inline">Nenhuma entrada registrada ainda.</div></td></tr>`}</tbody></table></div>
     </div>
-    <aside class="card entry-form-card">
+    <section class="card entry-form-card">
       <div class="entry-form-head"><div class="entry-form-title"><span class="entry-form-icon">${ic('plus')}</span><div><h2>Nova Entrada</h2><p>Registre uma compra, mesmo quando não houver nota fiscal.</p></div></div></div>
       <div class="entry-form-grid">
         <label class="full"><span>Fornecedor / vendedor *</span><div class="entry-inline-input"><input id="entrySupplier" list="entrySuppliersList" value="${esc(state.supplier)}" placeholder="Ex.: João, Tambasa..."><datalist id="entrySuppliersList">${entrySuppliers().map(s=>`<option value="${esc(s)}"></option>`).join('')}</datalist><button class="btn soft" id="addSupplierBtn">${ic('plus')}Novo</button></div></label>
@@ -1761,7 +1766,7 @@ function renderEntradas(){
       <div class="entry-draft-box">
         <div class="entry-draft-head"><h3>Itens da Compra</h3><strong>${money(draftTotal)}</strong></div>
         <div class="entry-items-grid">
-          <label class="full"><span>Produto *</span><div class="entry-inline-input entry-product-picker"><select id="entryProduct"><option value="">Selecione o produto</option>${data.products.map(p=>`<option value="${p.id}" ${p.id===state.selectedProductId?'selected':''}>${esc(p.name)} • ${esc(productUnit(p))}</option>`).join('')}</select><button type="button" class="btn soft" id="newEntryProductBtn">${ic('plus')} Novo produto</button></div><small class="entry-field-help">Produto novo pode ser cadastrado aqui com estoque inicial zero.</small></label>
+          <label class="full"><span>Produto *</span><div class="entry-inline-input entry-product-picker"><div class="entry-product-search-wrap"><input id="entryProductSearch" autocomplete="off" placeholder="Pesquise pelo nome do produto..." value="${esc((data.products.find(p=>p.id===state.selectedProductId)||{}).name||'')}"><input id="entryProduct" type="hidden" value="${esc(state.selectedProductId||'')}"><div id="entryProductSuggestions" class="product-suggestions" hidden></div></div><button type="button" class="btn soft" id="newEntryProductBtn">${ic('plus')} Novo produto</button></div><small class="entry-field-help">Digite parte do nome para pesquisar. Produto novo pode ser cadastrado aqui com estoque inicial zero.</small></label>
           <label><span>Quantidade *</span><input id="entryQty" type="number" min="0.001" step="0.001" value="${esc(state.itemQty??'1')}"></label>
           <label><span>Custo do fornecedor / un. *</span><input id="entryCost" type="number" min="0" step="0.01" value="${esc(state.itemCost??'0')}"></label>
           <label><span>Peso por unidade (kg)</span><input id="entryItemWeight" type="number" min="0" step="0.001" value="${esc(state.itemWeight??'')}" placeholder="Ex.: 25"></label>
@@ -1778,17 +1783,79 @@ function renderEntradas(){
       </div>
       <div class="entry-help-box"><strong>Como funciona?</strong><span><b>Salvar pendente:</b> registra a compra sem alterar o estoque. <b>Receber:</b> acrescenta ao estoque e recalcula o custo médio. <b>Receber + despesa:</b> faz tudo isso e registra a saída financeira.</span></div>
       <div class="entry-form-actions entry-actions-v124"><button class="btn primary" id="launchEntryBtn">${ic('report')}Salvar pendente</button><button class="btn primary alt" id="receiveEntryBtn">${ic('check')}Receber mercadoria</button><button class="btn primary entry-expense-btn" id="receiveExpenseEntryBtn">${ic('wallet')}Receber + registrar despesa</button><button class="btn outline" id="clearEntryDraftBtn">${ic('trash')}Limpar</button></div>
-    </aside>
+    </section>
   </div>
   <div class="entry-bottom-grid">
     <div class="card entry-supplier-card"><div class="entry-section-head"><div><h2>Entradas por Fornecedor (Últimos 30 dias)</h2></div></div><div class="entry-supplier-list">${topSuppliers.map(([name,val])=>`<div class="entry-supplier-row"><div class="entry-supplier-label">${esc(name)}</div><div class="entry-supplier-bar"><span style="width:${Math.max(10,val/supplierMax*100)}%"></span></div><strong>${money(val)}</strong></div>`).join('')||'<div class="small-empty">Sem dados suficientes para o gráfico.</div>'}</div></div>
     <div class="card entry-category-card"><div class="entry-section-head"><div><h2>Entradas por Categoria (Valor)</h2></div></div>${categoryEntries.length?`<div class="entry-donut-wrap"><div class="entry-donut" style="background:conic-gradient(${conic})"><div class="entry-donut-center"><strong>${money(catTotal)}</strong><small>em entradas</small></div></div><div class="entry-donut-legend">${categoryEntries.map((x,i)=>`<div class="legend-row"><span><i class="dot" style="background:${catColors[i%catColors.length]}"></i>${esc(x[0])}</span><b>${catTotal?((x[1]/catTotal)*100).toFixed(1).replace('.',',')+'%':'0%'}</b></div>`).join('')}</div></div>`:'<div class="small-empty">Sem dados suficientes para o gráfico.</div>'}</div>
+  </div>
   </div>`;
+
+  const openEntryFormBtn=$('#openEntryFormBtn');
+  if(openEntryFormBtn)openEntryFormBtn.onclick=()=>{renderEntradas.formOpen=true;renderEntradas();window.scrollTo(0,0)};
+  const backEntriesBtn=$('#backEntriesBtn');
+  if(backEntriesBtn)backEntriesBtn.onclick=()=>{captureEntryDraftFields();renderEntradas.formOpen=false;renderEntradas();window.scrollTo(0,0)};
 
   $('#viewAllEntries').onclick=(e)=>{e.preventDefault();toast('A tabela já mostra as entradas mais recentes.');};
   $('#addSupplierBtn').onclick=(e)=>{e.preventDefault();const name=prompt('Digite o nome do novo fornecedor ou vendedor:');if(name){$('#entrySupplier').value=name.trim()}};
   $('#newEntryProductBtn').onclick=(e)=>{e.preventDefault();entryNewProductForm()};
-  $('#entryProduct').onchange=()=>{const state=captureEntryDraftFields();const p=data.products.find(x=>x.id===$('#entryProduct').value);if(p&&Number($('#entryCost').value||0)===0&&Number(p.cost||0)>0){$('#entryCost').value=Number(p.cost||0);state.itemCost=$('#entryCost').value}if(p&&!$('#entryItemWeight').value){$('#entryItemWeight').value=entryInferredWeight(p.name)||'';state.itemWeight=$('#entryItemWeight').value}};
+
+  const entryProductInput=$('#entryProductSearch');
+  const entryProductHidden=$('#entryProduct');
+  const entrySuggestionBox=$('#entryProductSuggestions');
+  const chooseEntryProduct=(p)=>{
+    if(!p)return;
+    entryProductHidden.value=p.id;
+    entryProductInput.value=p.name;
+    const state=captureEntryDraftFields();
+    state.selectedProductId=p.id;
+    if(Number($('#entryCost').value||0)===0&&Number(p.cost||0)>0){$('#entryCost').value=Number(p.cost||0);state.itemCost=$('#entryCost').value}
+    if(!$('#entryItemWeight').value){$('#entryItemWeight').value=entryInferredWeight(p.name)||'';state.itemWeight=$('#entryItemWeight').value}
+    entrySuggestionBox.hidden=true;
+  };
+  const renderEntryProductSuggestions=()=>{
+    const term=(entryProductInput.value||'').trim().toLowerCase();
+    const selected=entryProductHidden.value;
+    const list=(data.products||[]).filter(p=>{
+      if(!term)return true;
+      return String(p.name||'').toLowerCase().includes(term)||String(p.code||'').toLowerCase().includes(term)||String(p.brand||'').toLowerCase().includes(term);
+    }).slice(0,12);
+    if(!list.length){
+      entrySuggestionBox.innerHTML='<div class="small-empty">Nenhum produto encontrado.</div>';
+      entrySuggestionBox.hidden=false;
+      return;
+    }
+    entrySuggestionBox.innerHTML=list.map(p=>`<button type="button" class="product-suggestion ${p.id===selected?'active':''}" data-entry-product-id="${p.id}"><div class="product-suggestion-main"><strong>${esc(p.name)}</strong><small>${esc(p.code||p.id)} • ${esc(productUnit(p))}</small></div><span>${money(Number(p.cost||0))}</span></button>`).join('');
+    entrySuggestionBox.hidden=false;
+    $$('[data-entry-product-id]').forEach(btn=>btn.onclick=()=>{
+      const p=data.products.find(x=>x.id===btn.dataset.entryProductId);
+      chooseEntryProduct(p);
+    });
+  };
+  entryProductInput.addEventListener('focus',renderEntryProductSuggestions);
+  entryProductInput.addEventListener('input',()=>{
+    const current=(data.products||[]).find(x=>x.id===entryProductHidden.value);
+    if(!current||current.name!==entryProductInput.value)entryProductHidden.value='';
+    captureEntryDraftFields();
+    renderEntryProductSuggestions();
+  });
+  entryProductInput.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){entrySuggestionBox.hidden=true;return;}
+    if(e.key==='Enter'){
+      e.preventDefault();
+      const first=(data.products||[]).filter(p=>{
+        const term=(entryProductInput.value||'').trim().toLowerCase();
+        return !term||String(p.name||'').toLowerCase().includes(term)||String(p.code||'').toLowerCase().includes(term)||String(p.brand||'').toLowerCase().includes(term);
+      })[0];
+      if(first)chooseEntryProduct(first);
+    }
+  });
+  entryProductInput.addEventListener('blur',()=>setTimeout(()=>entrySuggestionBox.hidden=true,120));
+  if(entryProductHidden.value){
+    const selected=(data.products||[]).find(x=>x.id===entryProductHidden.value);
+    if(selected)entryProductInput.value=selected.name;
+  }
+
   $('#addEntryItemBtn').onclick=()=>{
     const p=data.products.find(x=>x.id===$('#entryProduct').value);const qty=Math.max(0,Number($('#entryQty').value||0));const cost=Math.max(0,Number($('#entryCost').value||0));
     Object.assign(state,captureEntryDraftFields());
@@ -1817,7 +1884,7 @@ function renderEntradas(){
       created.forEach(e=>e.expenseId=expenseId);
     }
     const ok=await persistNow();
-    renderEntradas.state=entryDraftDefault();renderEntradas();
+    renderEntradas.state=entryDraftDefault();renderEntradas.formOpen=false;renderEntradas();
     const msg=registerExpense?'Mercadorias recebidas, estoque/custo médio atualizados e despesa registrada.':status==='Recebida'?'Mercadorias recebidas e estoque/custo médio atualizados.':'Compra salva como pendente, sem alterar o estoque.';
     toast(ok?msg:'Lançamento feito localmente, mas houve falha ao sincronizar com o Supabase.');
   };
