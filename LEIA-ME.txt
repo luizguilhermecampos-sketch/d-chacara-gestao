@@ -1,0 +1,399 @@
+D CHÁCARA EMPÓRIO | AgroGestão
+================================================================
+
+ESTRUTURA DO PROJETO
+- index.html ............. tela de login
+- dashboard.html ......... Início
+- vendas, estoque, entradas, despesas, fiados, clientes,
+  indicadores, configuracoes.html ... demais telas
+- css/pages.css .......... estilos originais do sistema
+- css/mobile.css ......... ajustes para celular
+- css/tema.css ........... tema visual (cores, cards, gráficos)
+- css/login.css .......... estilo da tela de login
+- js/app.js .............. sistema (telas, cálculos, Supabase)
+- js/mobile.js ........... menu do celular
+- js/tema.js ............. ícones nos títulos e cor dos cards
+- js/login.js ............ login
+- js/supabase-config.js .. conexão com o Supabase
+- assets/img/ ............ imagens (banner e login)
+- SUPABASE_EXECUTAR_ANTES.sql ... script do banco (rodar uma vez no Supabase)
+
+CONFIGURAÇÃO DO SUPABASE
+----------------------------------------------------------------
+D CHÁCARA EMPÓRIO - VERSÃO SUPABASE
+
+1. No Supabase, abra SQL Editor.
+2. Execute todo o arquivo SUPABASE_EXECUTAR_ANTES.sql.
+3. Depois abra index.html via servidor/local host ou GitHub Pages.
+4. Login visível: Luiz.silva
+5. A senha é a cadastrada no Supabase Auth.
+
+Esta versão usa o Supabase Auth e uma base compartilhada na tabela app_state.
+Qualquer computador autenticado carrega a mesma base.
+O localStorage é mantido apenas como cache local de contingência.
+
+IMPORTANTE: a publishable key é pública e pode ficar no front-end. Nunca coloque secret/service_role key no site.
+
+================================================================
+v2.2 | Leitura analítica
+----------------------------------------------------------------
+- Setas ▲▼ nos cards: Início compara com ontem e com o mesmo trecho do
+  mês passado; Indicadores compara com o período anterior de mesmo
+  tamanho (aparece a frase dizendo quais datas). Em despesas, subir
+  aparece em vermelho.
+- Fornecedores com o mesmo nome escrito diferente (ALIPAN / Alipan /
+  acento / espaço) são somados juntos nos gráficos, filtros e listas.
+  Ao cadastrar, o sistema usa a grafia que já existe.
+  Os registros antigos NÃO foram reescritos.
+- Datas nas tabelas em dd/mm/aaaa (o dado salvo continua igual).
+- Indicadores: cada gráfico de barras com a sua cor e a % de cada item.
+- Faturamento diário e Vendas dos últimos 30 dias: média diária,
+  melhor dia em amarelo e dias abaixo da média em verde claro.
+- Limpeza: removidas as cópias que ninguém usava (app.js, pages.css,
+  login.css, login.js, supabase-config.js e imagens na raiz, pasta
+  TXT_CODIGOS, relatorios.html) e os vários LEIA-ME viraram este arquivo.
+
+================================================================
+D Chácara Empório v2.0 | Novo tema visual
+
+Somente aparência. Nenhuma alteração em app.js, Supabase, cálculos ou dados.
+
+ARQUIVOS NOVOS
+- css/tema.css ............ cores, fontes, cards, botões, tabelas, menu e banner
+- js/tema.js .............. cor de cada card de indicador + ícones nos títulos
+- assets/img/hero-farm-tema.jpg  cópia da foto do banner sem a faixa branca da borda
+  (a hero-farm.jpg original foi mantida)
+
+ARQUIVOS ALTERADOS
+- dashboard, vendas, estoque, entradas, despesas, fiados, clientes,
+  indicadores e configuracoes.html: só incluem tema.css, tema.js e as
+  fontes Bricolage Grotesque + Figtree (Google Fonts).
+
+O QUE MUDOU
+- Paleta da roça: verde-mata, verde-pasto, amarelo-milho, azul-céu e urucum.
+- Cards de indicador iguais em TODAS as telas: ícone, rótulo, valor e
+  legenda no mesmo lugar, com uma faixa colorida à esquerda.
+- Todos os títulos de card com ícone e o mesmo tamanho.
+- Banner do topo em verde escuro sobre a foto, com o título em destaque.
+- Menu lateral com a página atual marcada em amarelo-milho.
+- Celular: no Início, gráficos e tabelas agora ficam um embaixo do outro.
+
+COMO VOLTAR AO VISUAL ANTIGO
+Apague, em cada página .html, o <link ... css/tema.css ...> e o
+<script src="js/tema.js ..."></script>. Nada mais precisa mudar.
+
+----------------------------------------------------------------
+v2.1 | Correção dos gráficos de rosca
+- Entradas por Categoria: valor e "em entradas" agora ficam juntos e
+  centralizados dentro do anel (antes um ia para a borda e o outro caía no anel).
+- Todas as roscas (Entradas, Despesas, Indicadores) com o mesmo tamanho,
+  centro e legenda legível (13px, número alinhado).
+- Paleta única de categorias em todos os gráficos: verde, milho, azul,
+  urucum, roxo, turquesa... Antes Entradas usava só tons de verde, e
+  Rações/Animais/Empório ficavam quase iguais.
+- app.js: alteradas SOMENTE as 4 listas de cores dos gráficos (nenhuma
+  conta ou regra mudou). Versão do arquivo: app.js?v=1.31.
+
+================================================================
+HISTÓRICO DAS VERSÕES ANTERIORES
+================================================================
+
+---- ALTERACOES_V1_30.txt ----
+D Chácara Empório v1.30 | Revisão da aba Vendas
+
+Atualização visual do PDV e melhorias no desconto.
+- Desconto editável em reais ou porcentagem, sem recriar o campo a cada tecla.
+- O desconto percentual acompanha alterações no preço e quantidade.
+- Seletor de unidade compactado, com indicação de preço e estoque.
+- Atalhos de peso de 250g, 500g, 1kg e 2kg para produtos fracionados por kg.
+- Painel de atendimento, carrinho, pagamento e resumo com novo visual.
+- Mantidas as operações originais de Supabase, produtos, estoque, fiados, comprovantes e relatórios.
+- Mantidos arquivos existentes: nenhuma remoção sem comprovação de desuso.
+
+IMPORTANTE: Testar vendas reais em ambiente seguro antes de publicar em produção.
+
+---- LEIA-ME_ATUALIZACAO_VENDAS_1_29.txt ----
+D CHÁCARA EMPÓRIO — VENDAS v1.29
+
+Projeto completo para publicação no GitHub, gerado a partir do ZIP original enviado em 15/10/2026.
+
+Melhorias de Vendas:
+- Campo de desconto digitável sem perda de foco, em reais ou porcentagem, com cálculo em tempo real.
+- Limites de desconto para evitar valores negativos e manutenção do formato monetário salvo.
+- Venda fracionada de produtos com separação de preço, saldo e seletor de modalidade.
+- Atalhos de peso de 250g, 500g, 1kg e 2kg, respeitando os saldos do estoque e a rotina existente de abertura de embalagens.
+- Cores, cartões, sombras, realces, botões e animações sutis, com preferência de movimento reduzido respeitada.
+- Campo recebido continua editável enquanto troco é recalculado.
+
+Limpeza: cópias .txt e arquivos duplicados na raiz foram excluídos apenas quando havia cópia idêntica nas pastas efetivamente referenciadas pelo HTML. Foram mantidos index.html, telas, CSS/JS em diretórios, Supabase, SQL e imagens ativas.
+
+ATENÇÃO: faça backup do GitHub antes da atualização. Este é um pacote completo, mas sem validação de vendas reais em conexão ao Supabase. Teste em ambiente seguro antes de usar no caixa.
+
+---- LEIA-ME_V1_27_ENTRADAS_FRETE.txt ----
+D CHÁCARA EMPÓRIO - ENTRADAS COM FRETE - V1.27
+
+ATUALIZAÇÃO: 15/10/2026
+
+Na aba Entradas, cadastre vários itens na mesma compra. Indique o peso por unidade em kg (é sugerido automaticamente quando há "25KG" no nome); informe frete total e critério de rateio.
+
+Critérios: Peso (recomendado para sacos), Valor, Quantidade. O rateio fecha exatamente em centavos, somado por item. O custo da entrada armazena custo completo, baseCost guarda custo sem frete e freightShare armazena o frete do item.
+
+Na opção Receber + registrar despesa, uma única despesa registra produtos + frete. Não registre novamente o mesmo frete em Despesas.
+
+Se já registrou a compra ou o frete em outra ocasião, confira antes de importar novamente para não duplicar entradas.
+
+INSTALAÇÃO: extraia o ZIP, mantenha estrutura de pastas e substitua os arquivos no GitHub. Faça backup do banco antes e teste uma compra pequena primeiro. Não é preciso alterar o SQL do Supabase para esta versão, pois a integração persiste os mesmos objetos de estado existentes.
+
+Arquivos principais alterados: js/app.js e css/pages.css. Cópias na raiz e cópia TXT do JS/CSS foram incluídas.
+
+---- LEIA-ME_V1_26_MOBILE.txt ----
+D CHÁCARA EMPÓRIO — RESPONSIVO MOBILE v1.26
+
+Esta atualização é somente de interface/responsividade.
+NÃO precisa executar SQL e NÃO precisa alterar o Supabase.
+
+ARQUIVOS NOVOS:
+- css/mobile.css
+- js/mobile.js
+
+ARQUIVOS HTML ATUALIZADOS:
+- dashboard.html
+- vendas.html
+- estoque.html
+- entradas.html
+- despesas.html
+- fiados.html
+- clientes.html
+- indicadores.html
+- configuracoes.html
+
+COMO ATUALIZAR NO GITHUB:
+1. Adicione css/mobile.css dentro da pasta css.
+2. Adicione js/mobile.js dentro da pasta js.
+3. Substitua os 9 arquivos HTML pelos que estão neste ZIP.
+4. Não altere js/app.js.
+5. Não altere css/pages.css.
+6. Não altere o Supabase.
+7. Aguarde o GitHub Pages atualizar e, no celular, feche/reabra a página ou limpe o cache.
+
+O QUE MUDA NO CELULAR:
+- Menu lateral vira menu gaveta/hambúrguer.
+- Cabeçalho fica compacto.
+- Cards passam para 2 ou 1 coluna.
+- Formulários ficam em uma coluna.
+- Vendas ficam mais confortáveis para toque.
+- Tabelas ganham rolagem horizontal.
+- Filtros e botões se reorganizam.
+- Indicadores e gráficos passam para uma coluna.
+- Modais ocupam melhor a tela.
+- Inputs usam tamanho adequado para evitar zoom automático em celulares.
+
+ROLLBACK:
+Se não gostar, remova css/mobile.css e js/mobile.js e volte os HTMLs antigos da v1.25.
+
+---- LEIA-ME_V1_25.txt ----
+D CHÁCARA EMPÓRIO — AgroGestão v1.25
+
+MELHORIAS DE CONFIABILIDADE E SINCRONIZAÇÃO
+
+1. Proteção contra sobrescrita entre computadores
+- O app_state agora usa o updated_at como controle de versão.
+- Se outro computador salvar antes, a gravação local não sobrescreve a nuvem silenciosamente.
+- O sistema sinaliza conflito e preserva o cache local para conferência.
+
+2. Proteção de alterações pendentes
+- Alterações locais ficam marcadas como pendentes até confirmação do Supabase.
+- Se houver queda de internet, o cache local é mantido.
+- Ao voltar a conexão, a alteração pode ser reenviada com segurança quando a versão remota não mudou.
+
+3. Operações críticas
+- Ajuste manual de estoque passou a aguardar confirmação do Supabase.
+- Configurações agora aguardam confirmação antes de recarregar.
+- Restauração de configurações agora aguarda confirmação.
+- Restauração de backup agora aguarda confirmação e usa substituição global explícita.
+- Reset total agora confirma a gravação antes de recarregar.
+
+4. Indicadores
+- Produtos Mais Vendidos passam a preservar a unidade vendida (un, saco, rolo, kg, m etc.).
+- Produtos fechados e fracionados não são mais somados como se fossem a mesma grandeza.
+- Ranking passa a usar faturamento, exibindo a quantidade real vendida na unidade correta.
+- Estoque por Categoria passa a mostrar valor de custo em R$, evitando somar unidades incompatíveis.
+
+5. Fotos de produtos
+- Novas fotos ou fotos alteradas são enviadas para o Supabase Storage, bucket product-images.
+- O cadastro passa a guardar a URL pública da foto, deixando o app_state mais leve.
+- Se o Storage ainda não estiver configurado, existe fallback para manter a imagem incorporada.
+- Fotos antigas em Base64 permanecem funcionando; elas migram naturalmente quando forem editadas.
+
+6. Supabase
+- O arquivo SUPABASE_EXECUTAR_ANTES.sql agora também cria/configura o bucket product-images e as políticas necessárias.
+- É necessário executar novamente esse SQL no Supabase antes de usar o Storage da v1.25.
+
+7. Organização
+- app.js da raiz e js/app.js foram sincronizados.
+- Todas as páginas principais carregam js/app.js?v=1.25.
+
+IMPORTANTE
+Antes de publicar a v1.25:
+1. Execute novamente SUPABASE_EXECUTAR_ANTES.sql no SQL Editor do Supabase.
+2. Depois publique/mescle a branch melhorias-confiabilidade-v1-25.
+3. Faça um teste de venda, entrada, ajuste de estoque, fiado, foto de produto, backup e conflito em dois navegadores.
+
+---- LEIA-ME_V1_24.txt ----
+D CHÁCARA EMPÓRIO — AgroGestão v1.24
+
+MELHORIAS NA ABA ENTRADAS
+
+1. Documento / nota fiscal agora é opcional.
+   - Tipos: Nota Fiscal, Recibo, Compra sem documento e Outro.
+   - Se ficar vazio, o sistema gera automaticamente um código ENT-AAAAMMDD-XXX.
+
+2. Forma de pagamento na compra.
+   - PIX, Dinheiro, Cartão de Débito, Cartão de Crédito, Boleto, Transferência e Prazo.
+
+3. Três fluxos de entrada:
+   - Salvar pendente: não altera estoque.
+   - Receber mercadoria: aumenta estoque e recalcula custo médio.
+   - Receber + registrar despesa: além de receber, cria despesa vinculada à compra.
+
+4. Custo médio ponderado.
+   Exemplo: 2 un a R$70 + 1 un a R$100 = novo custo médio R$80/un.
+   Produtos fracionados consideram também o saldo aberto equivalente para o cálculo.
+
+5. Proteção de histórico.
+   - Entradas recebidas não podem ser excluídas/alteradas de forma destrutiva quando já existem vendas, ajustes ou recebimentos posteriores do produto.
+   - Evita estoque e custo histórico inconsistentes.
+
+6. Despesa vinculada.
+   - Compra recebida e paga pode gerar automaticamente uma despesa em Fornecedores.
+   - Se pagamento = Prazo, despesa fica Pendente; demais formas ficam Paga.
+   - Exclusão segura atualiza/remove a despesa vinculada quando aplicável.
+
+Exemplo: compra de 1 galo por R$80.
+Fornecedor: vendedor da ave
+Documento: pode ficar vazio
+Produto: Galo
+Quantidade: 1 un
+Custo: R$80
+Ação: Receber + registrar despesa
+Resultado: +1 no estoque, custo atualizado e despesa de R$80 registrada.
+
+---- LEIA-ME_V1_23.txt ----
+D Chácara AgroGestão - v1.23
+
+Correções e revisão geral:
+- Restaurada função central de exportação CSV (estava ausente na v1.22).
+- Corrigidos Exportar geral, Vendas, Estoque, Despesas, Fiados e Exportar Despesas.
+- Downloads usam mecanismo mais robusto e mensagem de sucesso/erro.
+- Gráfico Formas de Pagamento com cores mais diferenciadas.
+- Ao passar o mouse nas formas de pagamento, exibe resumo dos produtos/quantidades/valores vendidos naquela forma.
+- PDF de vendas usa rotina de download robusta.
+- Cache-busting atualizado para v1.23 em todas as telas.
+- Mantidas melhorias de estoque fracionado, entradas, vendas pagas editáveis/excluíveis e cálculo de lucro.
+
+---- LEIA-ME_V1_22.txt ----
+AGROGESTÃO D CHÁCARA - v1.22
+
+Atualizações:
+- Revisão do cálculo de custo/lucro para vendas inteiras e fracionadas.
+- Relatório detalhado de vendas e lucro dentro de Indicadores e Relatórios.
+- Filtros de data inicial/final permanecem no topo e controlam o relatório.
+- PDF de vendas com produto, quantidade, valor vendido, custo considerado, lucro e margem.
+- Botão PDF de vendas junto aos filtros e no card do relatório.
+- Novas vendas continuam congelando o custo no momento da venda.
+
+---- LEIA-ME_V1_21.txt ----
+D Chácara AgroGestão — v1.21
+
+Correção do Lucro Bruto / Resultado Estimado:
+- Venda de embalagem inteira: custo = custo da embalagem x quantidade.
+- Venda fracionada: custo = (custo da embalagem / quantidade por embalagem) x quantidade fracionada.
+- Novas vendas gravam um snapshot do custo unitário, custo da embalagem e quantidade por embalagem no momento da venda.
+- Vendas antigas sem snapshot usam o cadastro atual do produto como fallback.
+- Filtro por categoria agora calcula faturamento/custo apenas das linhas da categoria selecionada, sem somar itens de outras categorias da mesma venda.
+- Card de Lucro Bruto mostra também custo vendido e margem percentual.
+
+---- LEIA-ME_V1_20.txt ----
+D CHÁCARA AGROGESTÃO — v1.20
+
+Correção principal: finalização de vendas.
+
+- A venda agora aguarda a confirmação do Supabase antes de ser considerada concluída.
+- Removido o recarregamento automático que podia ocorrer antes da gravação terminar.
+- Botão Finalizar venda é bloqueado durante a gravação para evitar vendas duplicadas.
+- Se a gravação falhar, estoque, venda e fiado são restaurados ao estado anterior.
+- Mensagens claras informam falha de estoque, conexão ou erro inesperado.
+- Mantidas as funções de venda fracionada, abertura automática de embalagem, Entradas e Indicadores.
+
+---- LEIA-ME_V1_19.txt ----
+D Chácara AgroGestão v1.19
+
+Melhoria visual na tela de Vendas:
+- Campo "Quantidade / forma de venda" mais largo.
+- Quantidade e forma de venda separadas visualmente dentro do mesmo bloco.
+- Opções como "rolo inteiro" e "m fracionado" passam a ter espaço para leitura.
+- Botão "Lançar produto" não comprime mais o seletor.
+- Layout responsivo: em telas menores os elementos quebram de linha em vez de ficarem ocultos.
+
+---- LEIA-ME_V1_18.txt ----
+D CHÁCARA AGROGESTÃO — v1.18
+
+NOVIDADES
+1. Ao tentar vender produto fracionado sem saldo aberto suficiente, aparece um card central perguntando se deseja abrir a quantidade necessária de embalagens.
+2. Ao confirmar, o sistema reduz o estoque fechado, aumenta o saldo fracionado e continua a venda automaticamente.
+3. Funciona também ao aumentar a quantidade de um item fracionado já colocado no carrinho.
+4. Indicadores agora mostram faturamento fracionado, faturamento por embalagem inteira, embalagens abertas no período e produtos com saldo aberto.
+5. Novo comparativo Inteiro x Fracionado, ranking de fracionados por faturamento e lista de saldos abertos.
+6. As unidades continuam descritivas: use rolo para tela, saco para ração/milho e un para itens genéricos.
+
+EXEMPLO TELA 50 m
+Unidade principal: rolo
+Estoque fechado: 1 rolo
+Quantidade por embalagem: 50
+Unidade fracionada: m
+Saldo aberto: 0
+Preço por rolo: R$ 500
+Preço por metro: R$ 12
+
+---- LEIA-ME_V1_17.txt ----
+D CHÁCARA AGROGESTÃO - v1.17
+
+MELHORIAS DE ESTOQUE FRACIONADO
+
+1. Novas unidades de estoque/venda: un, saco, rolo, caixa, pacote, kg, g, L, mL e m.
+2. No cadastro de produto existe a opção "Venda fracionada".
+3. Para produtos fracionados, informar:
+   - unidade principal (ex.: saco ou rolo)
+   - quantidade por embalagem (ex.: 20 kg ou 50 m)
+   - unidade fracionada (ex.: kg ou m)
+   - preço por unidade fracionada
+4. A aba Estoque mostra separadamente o saldo fechado e o saldo aberto.
+5. O botão "Abrir" transforma 1 embalagem fechada em saldo fracionado.
+   Ex.: 17 sacos de milho de 20 kg -> Abrir -> 16 sacos + 20 kg abertos.
+6. Na Venda, o produto fracionado permite escolher embalagem inteira ou unidade fracionada.
+7. A baixa de estoque é feita no saldo correto (fechado ou aberto).
+8. Ao editar ou excluir uma venda, o saldo correto também é restaurado/recalculado.
+9. Cadastro de produto novo dentro da aba Entradas continua funcionando e agora também aceita produto fracionado.
+10. As melhorias anteriores de editar/excluir vendas finalizadas permanecem.
+
+EXEMPLOS
+Milho: unidade principal=saco, quantidade por embalagem=20, unidade fracionada=kg.
+Tela de galinheiro: unidade principal=rolo, quantidade por embalagem=50, unidade fracionada=m.
+
+---- LEIA-ME_V1_16.txt ----
+D Chácara AgroGestão — versão 1.16
+
+Atualizações consolidadas:
+1) ENTRADAS
+- Cadastro rápido de produto novo dentro da própria entrada.
+- Produto é criado com estoque inicial 0.
+- A quantidade entra no estoque somente ao receber a mercadoria.
+
+2) VENDAS
+- Venda pode ser EDITADA mesmo com pagamento já concluído.
+- Venda pode ser EXCLUÍDA mesmo com pagamento já concluído.
+- Ao editar, o estoque é restaurado e recalculado conforme as novas quantidades.
+- Em venda fiada, pagamentos existentes são reconciliados com o novo total.
+- Se o novo total ficar maior que o já pago, a diferença volta como saldo em aberto.
+- Se o novo total ficar menor que o já pago, os pagamentos vinculados são ajustados para não exceder o novo total.
+- Ao excluir a venda, os itens retornam ao estoque e fiado/pagamentos vinculados são removidos.

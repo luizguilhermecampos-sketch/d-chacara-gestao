@@ -182,6 +182,54 @@ const today=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.g
 const now=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
 const uid=p=>`${p}-${Date.now()}-${Math.floor(Math.random()*999)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+// ===== v2.2 | nomes agrupados, datas BR e comparação de períodos =====
+// "ALIPAN", "Alipan" e " alipan " passam a ser o mesmo fornecedor.
+const nameKey=v=>String(v??'').normalize('NFD').replace(/[̀-ͯ]/g,'').trim().replace(/\s+/g,' ').toLowerCase();
+const cleanName=v=>String(v??'').trim().replace(/\s+/g,' ');
+// Agrupa linhas por nome e mostra a grafia mais usada.
+function groupByName(rows,getName,getValue,emptyLabel='Sem fornecedor'){
+  const m=new Map();
+  rows.forEach(r=>{const raw=cleanName(getName(r))||emptyLabel;const k=nameKey(raw);if(!m.has(k))m.set(k,{value:0,names:{}});const g=m.get(k);g.value+=Number(getValue(r)||0);g.names[raw]=(g.names[raw]||0)+1;});
+  return [...m.values()].map(g=>({label:Object.entries(g.names).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'pt-BR'))[0][0],value:g.value}));
+}
+// Lista sem repetidos (ignorando maiúsculas/acentos), com a grafia mais usada.
+function uniqueNames(list){return groupByName(list.filter(x=>cleanName(x)),x=>x,()=>1).map(x=>x.label).sort((a,b)=>a.localeCompare(b,'pt-BR'))}
+const sameName=(a,b)=>nameKey(a)===nameKey(b);
+// Ao salvar: se já existe esse fornecedor com outra grafia, usa a grafia existente.
+function canonicalSupplier(raw){
+  const v=cleanName(raw);if(!v)return v;
+  const all=[...(data.products||[]).map(p=>p.supplier),...(data.entries||[]).map(e=>e.supplier),...(data.expenses||[]).map(e=>e.supplier)];
+  const same=all.map(cleanName).filter(x=>x&&sameName(x,v));
+  if(!same.length)return v;
+  const c={};same.forEach(x=>c[x]=(c[x]||0)+1);
+  return Object.entries(c).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'pt-BR'))[0][0];
+}
+// 2026-10-15 -> 15/10/2026 | 2026-10-15 08:30 -> 15/10/2026 08:30 (só exibição)
+const dateBR=v=>{const s=String(v||'');const m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);if(!m)return s||'-';return `${m[3]}/${m[2]}/${m[1]}${m[4]?` ${m[4]}:${m[5]}`:''}`};
+// Seta de comparação: ▲ 12,3% vs período anterior. inverse=true quando subir é ruim (despesas).
+function deltaTag(cur,prev,label='vs anterior',inverse=false){
+  cur=Number(cur||0);prev=Number(prev||0);
+  if(!cur&&!prev)return `<em class="kpi-delta flat" title="Sem movimento nos dois períodos">— ${label}</em>`;
+  const tone=up=>inverse==='neutral'?'neutral':((inverse?!up:up)?'good':'bad');
+  if(!prev)return `<em class="kpi-delta ${tone(true)}" title="Não houve movimento no período anterior">▲ novo ${label}</em>`;
+  const pct=(cur-prev)/Math.abs(prev)*100;
+  if(Math.abs(pct)<0.05)return `<em class="kpi-delta flat" title="Anterior: ${money(prev)}">= igual ${label}</em>`;
+  const up=pct>0;
+  return `<em class="kpi-delta ${tone(up)}" title="Anterior: ${money(prev)}">${up?'▲':'▼'} ${Math.abs(pct).toLocaleString('pt-BR',{maximumFractionDigits:1})}% ${label}</em>`;
+}
+const isoDay=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+// Período anterior com o mesmo número de dias, logo antes do início.
+function previousRange(start,end){
+  const a=new Date(start+'T00:00:00'),b=new Date(end+'T00:00:00');
+  if(isNaN(a)||isNaN(b))return {start:'',end:''};
+  const days=Math.round((b-a)/86400000)+1;
+  const pe=new Date(a);pe.setDate(pe.getDate()-1);
+  const ps=new Date(pe);ps.setDate(ps.getDate()-(days-1));
+  return {start:isoDay(ps),end:isoDay(pe),days};
+}
+// Paleta única dos gráficos (mesma ordem das roscas).
+const CHART_COLORS=['#23854F','#F0B429','#2B7BB9','#C2412D','#7A4FB5','#1F8F8A','#8BBF4A','#A86B3C'];
 function triggerDownload(blob,filename){
   try{
     const url=URL.createObjectURL(blob);
@@ -284,9 +332,9 @@ const badge=s=>`<span class="badge ${/venc|atras|baixo|pend/i.test(s)?'danger':/
 const actions=(type,id,view=false)=>`<div class="actions">${view?`<button class="icon-btn" data-view-${type}="${id}" title="Ver">${ic('report')}</button>`:''}<button class="icon-btn" data-edit-${type}="${id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-${type}="${id}" title="Excluir">${ic('trash')}</button></div>`;
 const table=(heads,rows)=>rows.length?`<div class="table-wrap"><table class="table"><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="empty">Nenhum registro ainda.</div>`;
 const kpi=(i,l,v,t='',c='')=>`<article class="card hover kpi ${c}"><div class="kpi-icon">${ic(i)}</div><div><small>${l}</small><strong>${v}</strong>${t?`<div class="trend ${c==='danger'?'bad':''}">${t}</div>`:''}</div></article>`;
-function chart(values,labels=[],legend='Faturamento'){if(!values.length)return '<div class="empty">Sem dados suficientes para o gráfico.</div>';const max=Math.max(...values,1);return `<div class="chart"><div class="chart-legend"><span><i style="background:#1e9155"></i>${legend}</span></div><div class="bar-chart"><div class="ylabels"><span>${Math.round(max).toLocaleString('pt-BR')}</span><span>${Math.round(max*.75).toLocaleString('pt-BR')}</span><span>${Math.round(max*.5).toLocaleString('pt-BR')}</span><span>${Math.round(max*.25).toLocaleString('pt-BR')}</span><span>0</span></div>${values.map((v,i)=>`<div class="bar-item" style="--h:${Math.max(8,v/max*100)}%" data-tip="${esc(labels[i]||i+1)}: ${money(v)}"><span></span></div>`).join('')}</div></div>`}
+function chart(values,labels=[],legend='Faturamento'){if(!values.length)return '<div class="empty">Sem dados suficientes para o gráfico.</div>';const max=Math.max(...values,1);const avg=values.reduce((a,b)=>a+Number(b||0),0)/values.length;const bestI=values.indexOf(Math.max(...values));const lbl=i=>labels[i]?dateBR(labels[i]):String(i+1);const kfmt=v=>v>=1000?`${(v/1000).toLocaleString('pt-BR',{maximumFractionDigits:1})} mil`:`${Math.round(v).toLocaleString('pt-BR')}`;return `<div class="chart"><div class="chart-legend an-day-summary"><span><i class="k-avg"></i>Média diária <b>${money(avg)}</b></span><span><i class="k-best"></i>Melhor dia <b>${esc(lbl(bestI))} · ${money(values[bestI])}</b></span><span><i class="k-low"></i>Abaixo da média <b>${values.filter(v=>v<avg).length} de ${values.length} dias</b></span></div><div class="bar-chart"><div class="ylabels"><span>${kfmt(max)}</span><span>${kfmt(max*.75)}</span><span>${kfmt(max*.5)}</span><span>${kfmt(max*.25)}</span><span>0</span></div>${values.map((v,i)=>`<div class="bar-item ${i===bestI?'best':(v<avg?'low':'')}" style="--h:${Math.max(8,v/max*100)}%" data-tip="${esc(lbl(i))}: ${money(v)}"><span></span></div>`).join('')}</div></div>`}
 const donut=()=>{
-  const colors=['#0b6f46','#4da66b','#9cc971','#eda936','#b87540','#7c65c1','#c7ceca'];
+  const colors=['#23854F','#F0B429','#2B7BB9','#C2412D','#7A4FB5','#1F8F8A','#BFC8C1'];
   const map={};
   data.sales.forEach(s=>(s.lines||[]).forEach(l=>{const p=data.products.find(x=>x.id===l.productId);const cat=p?.category||'Sem categoria';map[cat]=(map[cat]||0)+((Number(l.price||0)*Number(l.qty||0))-Number(l.discount||0))}));
   const items=Object.entries(map).sort((a,b)=>b[1]-a[1]);
@@ -328,7 +376,7 @@ function normalizeInventoryData(){
 }
 normalizeInventoryData();
 const inventoryCategories=()=>[...new Set((data.categories||[]).map(x=>String(x).trim()).filter(Boolean))];
-const inventorySuppliers=()=>[...new Set((data.products||[]).map(p=>String(p.supplier||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+const inventorySuppliers=()=>uniqueNames((data.products||[]).map(p=>p.supplier));
 
 const PRODUCT_UNITS=['un','saco','rolo','caixa','pacote','kg','g','L','mL','m'];
 const FRACTION_UNITS=['kg','g','L','mL','m','un'];
@@ -581,7 +629,7 @@ function productForm(product=null){
       name,
       brand:$('#pBrand').value.trim(),
       category,
-      supplier:$('#pSupplier').value.trim(),
+      supplier:canonicalSupplier($('#pSupplier').value),
       unit,
       stock,
       min,
@@ -668,7 +716,7 @@ function openInventoryImport(){
           const existing=data.products.find(p=>String(p.code||'').trim()===code||String(p.id||'').trim()===code);
           const category=(cols[map.category]||'Sem categoria').trim()||'Sem categoria';
           const obj=existing||{id:uid('PRD'),photo:'',description:''};
-          Object.assign(obj,{code,name,category,brand:(cols[map.brand]||'').trim(),unit:(map.unit>=0?(cols[map.unit]||'').trim():'')||'un',supplier:(cols[map.supplier]||'').trim(),stock:inventoryNumber(cols[map.stock]),min:inventoryNumber(cols[map.min]),cost:inventoryNumber(cols[map.cost]),price:inventoryNumber(cols[map.price])});
+          Object.assign(obj,{code,name,category,brand:(cols[map.brand]||'').trim(),unit:(map.unit>=0?(cols[map.unit]||'').trim():'')||'un',supplier:canonicalSupplier(cols[map.supplier]||''),stock:inventoryNumber(cols[map.stock]),min:inventoryNumber(cols[map.min]),cost:inventoryNumber(cols[map.cost]),price:inventoryNumber(cols[map.price])});
           if(!existing)data.products.push(obj);
           if(!data.categories.includes(category))data.categories.push(category);
           count++;
@@ -741,18 +789,27 @@ function renderDashboard(){
   const monthKey=today().slice(0,7);
   const totalSales = data.sales.filter(s=>(s.date||'').slice(0,7)===monthKey).reduce((a,b)=>a+Number(b.total||0),0);
   const totalExpenses = data.expenses.filter(e=>(e.date||'').slice(0,7)===monthKey).reduce((a,b)=>a+Number(b.value||0),0);
+  // comparação: ontem e o mesmo trecho do mês passado (dia 1 até o mesmo dia)
+  const yDate=new Date();yDate.setDate(yDate.getDate()-1);const yKey=isoDay(yDate);
+  const yesterdaySales=data.sales.filter(s=>(s.date||'').slice(0,10)===yKey).reduce((a,b)=>a+Number(b.total||0),0);
+  const pmDate=new Date();pmDate.setDate(1);pmDate.setMonth(pmDate.getMonth()-1);
+  const pmStart=isoDay(pmDate);const pmLast=new Date(pmDate.getFullYear(),pmDate.getMonth()+1,0).getDate();
+  const pmEnd=`${pmStart.slice(0,8)}${String(Math.min(new Date().getDate(),pmLast)).padStart(2,'0')}`;
+  const inPm=v=>{const d=String(v||'').slice(0,10);return d>=pmStart&&d<=pmEnd};
+  const prevMonthSales=data.sales.filter(s=>inPm(s.date)).reduce((a,b)=>a+Number(b.total||0),0);
+  const prevMonthExpenses=data.expenses.filter(e=>inPm(e.date)).reduce((a,b)=>a+Number(b.value||0),0);
   const lowProducts = data.products.filter(p=>+p.stock<=+p.min);
   const pendingDebts = data.debts.filter(d=>d.status!=='Pago');
   const d = dailySales().slice(-30);
-  const latestSalesRows = data.sales.slice().reverse().slice(0,5).map((s,i)=>`<tr><td>${esc(String(s.id).slice(-4))}</td><td>${esc((s.date||'').replace('T',' ').slice(0,16))}</td><td>${esc(s.client||'-')}</td><td>${s.items||0}</td><td>${money(s.total)}</td><td>${esc(s.payment||'-')}</td><td>${badge('Concluída')}</td></tr>`);
+  const latestSalesRows = data.sales.slice().reverse().slice(0,5).map((s,i)=>`<tr><td>${esc(String(s.id).slice(-4))}</td><td>${esc(dateBR(s.date))}</td><td>${esc(s.client||'-')}</td><td>${s.items||0}</td><td>${money(s.total)}</td><td>${esc(s.payment||'-')}</td><td>${badge('Concluída')}</td></tr>`);
   const lowStockRows = lowProducts.slice(0,5).map(p=>`<tr><td>${p.photo?`<div class="product-cell"><img class="thumb" src="${p.photo}"><span>${esc(p.name)}</span></div>`:esc(p.name)}</td><td class="txt-warn">${esc(productStockSummary(p))}</td><td>${qtyLabel(p.min,productUnit(p))}</td></tr>`);
-  const debtRows = pendingDebts.slice(0,5).map(d=>`<tr><td>${esc(clientName(d.clientId))}</td><td>${money(d.balance)}</td><td>${esc(d.due||'-')}</td><td><span class="days-pill">${d.due?Math.max(0,Math.ceil((new Date(d.due+'T23:59:59')-new Date())/86400000))+' dias':'-'}</span></td></tr>`);
+  const debtRows = pendingDebts.slice(0,5).map(d=>`<tr><td>${esc(clientName(d.clientId))}</td><td>${money(d.balance)}</td><td>${esc(dateBR(d.due))}</td><td><span class="days-pill">${d.due?Math.max(0,Math.ceil((new Date(d.due+'T23:59:59')-new Date())/86400000))+' dias':'-'}</span></td></tr>`);
   $('#page').innerHTML=`
   <div class="grid kpis kpis-home">
-    <article class="card hover stat-home"><div class="stat-icon green">${ic('cart')}</div><div class="stat-copy"><small>Vendas do Dia</small><strong>${money(todaySales)}</strong><div class="trend neutral">Atualizado automaticamente</div></div><div class="stat-spark"></div></article>
-    <article class="card hover stat-home"><div class="stat-icon deep">${ic('chart')}</div><div class="stat-copy"><small>Faturamento do Mês</small><strong>${money(totalSales)}</strong><div class="trend neutral">Acumulado das vendas</div></div><div class="stat-spark"></div></article>
+    <article class="card hover stat-home"><div class="stat-icon green">${ic('cart')}</div><div class="stat-copy"><small>Vendas do Dia</small><strong>${money(todaySales)}</strong>${deltaTag(todaySales,yesterdaySales,'vs ontem')}<div class="trend neutral">Atualizado automaticamente</div></div><div class="stat-spark"></div></article>
+    <article class="card hover stat-home"><div class="stat-icon deep">${ic('chart')}</div><div class="stat-copy"><small>Faturamento do Mês</small><strong>${money(totalSales)}</strong>${deltaTag(totalSales,prevMonthSales,'vs mês passado')}<div class="trend neutral">Acumulado das vendas</div></div><div class="stat-spark"></div></article>
     <article class="card hover stat-home"><div class="stat-icon gold">${ic('box')}</div><div class="stat-copy"><small>Produtos em Baixo Estoque</small><strong>${lowProducts.length}</strong><div class="trend ${lowProducts.length?'warn':'neutral'}">${lowProducts.length?'Itens que exigem reposição':'Estoque sem alertas'}</div></div><div class="stat-alert">${lowProducts.length?'!':''}</div></article>
-    <article class="card hover stat-home danger-card"><div class="stat-icon rose">${ic('wallet')}</div><div class="stat-copy"><small>Despesas do Mês</small><strong>${money(totalExpenses)}</strong><div class="trend neutral">Total lançado no período</div></div><div class="stat-line"></div></article>
+    <article class="card hover stat-home danger-card"><div class="stat-icon rose">${ic('wallet')}</div><div class="stat-copy"><small>Despesas do Mês</small><strong>${money(totalExpenses)}</strong>${deltaTag(totalExpenses,prevMonthExpenses,'vs mês passado',true)}<div class="trend neutral">Total lançado no período</div></div><div class="stat-line"></div></article>
   </div>
   <div class="grid home-main-grid">
     <div class="card sales-chart-card">
@@ -1360,7 +1417,7 @@ function renderEstoque(){
     const term=state.search.trim().toLowerCase();
     const hit=!term||[p.name,p.code,p.brand,p.supplier,p.category].some(v=>String(v||'').toLowerCase().includes(term));
     const statusHit=state.status==='Todos'||inventoryStatus(p)===state.status;
-    const supplierHit=state.supplier==='Todos'||String(p.supplier||'')===state.supplier;
+    const supplierHit=state.supplier==='Todos'||sameName(p.supplier,state.supplier);
     const categoryHit=state.category==='Todos'||String(p.category||'')===state.category;
     return hit&&statusHit&&supplierHit&&categoryHit;
   });
@@ -1432,7 +1489,7 @@ function renderEstoque(){
 }
 
 
-function entrySuppliers(){return [...new Set([...(data.products||[]).map(p=>String(p.supplier||'').trim()).filter(Boolean),...(data.entries||[]).map(e=>String(e.supplier||'').trim()).filter(Boolean)])].sort((a,b)=>a.localeCompare(b,'pt-BR'))}
+function entrySuppliers(){return uniqueNames([...(data.products||[]).map(p=>p.supplier),...(data.entries||[]).map(e=>e.supplier)])}
 const entryTotal=e=>Number(e.qty||0)*Number(e.cost||0);
 const entryStatusCount=s=>(data.entries||[]).filter(e=>String(e.status||'')===s).length;
 const entryPendingCount=()=> (data.entries||[]).filter(e=>String(e.status||'')!=='Recebida').length;
@@ -1534,7 +1591,7 @@ function captureEntryDraftFields(){
   renderEntradas.state=state;
   const supplier=$('#entrySupplier'),docType=$('#entryDocType'),nf=$('#entryNf'),date=$('#entryDate'),payment=$('#entryPayment'),obs=$('#entryObs');
   const product=$('#entryProduct'),qty=$('#entryQty'),cost=$('#entryCost');
-  if(supplier)state.supplier=supplier.value.trim();
+  if(supplier)state.supplier=canonicalSupplier(supplier.value);
   if(docType)state.docType=docType.value;
   if(nf)state.nf=nf.value.trim();
   if(date)state.date=date.value;
@@ -1628,7 +1685,7 @@ function entryNewProductForm(){
       name,
       brand:$('#epBrand').value.trim(),
       category,
-      supplier:$('#epSupplier').value.trim(),
+      supplier:canonicalSupplier($('#epSupplier').value),
       unit,
       stock:0,
       min,
@@ -1688,7 +1745,7 @@ function entryForm(e=null){
     const min=isFractionalUnit(productUnit(p))?0.001:1;
     const q=Math.max(min,Number($('#eQty').value||min));
     const cost=Math.max(0,Number($('#eCost').value||0));
-    const supplier=$('#eSup').value.trim();
+    const supplier=canonicalSupplier($('#eSup').value);
     const status=$('#eStatus').value;
     const date=$('#eDate').value;
     if(!supplier||!date)return toast('Informe fornecedor e data.');
@@ -1728,7 +1785,7 @@ function expenseForm(e=null){
     const v=+$('#xValue').value||0;
     if(v<=0)return toast('Informe o valor.');
     const obj=e||{id:uid('DES')};
-    Object.assign(obj,{date:$('#xDate').value,type:$('#xType').value,category:$('#xCat').value,description:$('#xDesc').value.trim(),supplier:$('#xSup').value.trim(),payment:$('#xPay').value,value:v,status:$('#xStatus').value});
+    Object.assign(obj,{date:$('#xDate').value,type:$('#xType').value,category:$('#xCat').value,description:$('#xDesc').value.trim(),supplier:canonicalSupplier($('#xSup').value),payment:$('#xPay').value,value:v,status:$('#xStatus').value});
     if(!e)data.expenses.push(obj);
     if(obj.category&&!data.expenseCategories.includes(obj.category))data.expenseCategories.push(obj.category);
     save();closeModal();toast(e?'Despesa atualizada com sucesso.':'Despesa cadastrada com sucesso.');
@@ -1740,15 +1797,15 @@ function renderEntradas(){
   renderEntradas.state={...entryDraftDefault(),...state};
   const entryFormOpen=renderEntradas.formOpen===true;
   const totalValue=(data.entries||[]).reduce((a,b)=>a+entryTotal(b),0);
-  const activeSuppliers=new Set((data.entries||[]).map(e=>e.supplier).filter(Boolean)).size;
+  const activeSuppliers=new Set((data.entries||[]).map(e=>nameKey(e.supplier)).filter(Boolean)).size;
   const pendingNotes=entryPendingCount();
   const recent=(data.entries||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.id).localeCompare(String(a.id))).slice(0,8);
-  const supplierTotals={};const cutoff=new Date(Date.now()-29*86400000);
-  (data.entries||[]).forEach(e=>{const dt=e.date?new Date(e.date+'T00:00:00'):null;if(dt&&dt>=cutoff)supplierTotals[e.supplier||'Sem fornecedor']=(supplierTotals[e.supplier||'Sem fornecedor']||0)+entryTotal(e)});
-  const topSuppliers=Object.entries(supplierTotals).sort((a,b)=>b[1]-a[1]).slice(0,5);const supplierMax=Math.max(1,...topSuppliers.map(x=>x[1]),1);
+  const cutoff=new Date(Date.now()-29*86400000);
+  const recentEntries=(data.entries||[]).filter(e=>{const dt=e.date?new Date(e.date+'T00:00:00'):null;return dt&&dt>=cutoff});
+  const topSuppliers=groupByName(recentEntries,e=>e.supplier,entryTotal).map(x=>[x.label,x.value]).sort((a,b)=>b[1]-a[1]).slice(0,5);const supplierMax=Math.max(1,...topSuppliers.map(x=>x[1]),1);
   const categoryTotals={};(data.entries||[]).forEach(e=>{const c=entryCategory(e);categoryTotals[c]=(categoryTotals[c]||0)+entryTotal(e)});
   let categoryEntries=Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1]);if(categoryEntries.length>6){const head=categoryEntries.slice(0,5);const rest=categoryEntries.slice(5).reduce((s,x)=>s+x[1],0);categoryEntries=[...head,['Outros',rest]]}
-  const catTotal=Math.max(0,categoryEntries.reduce((s,x)=>s+x[1],0));const catColors=['#0b7b49','#4ea969','#a1cc6c','#efae35','#b97a44','#c7ceca'];let acc=0;
+  const catTotal=Math.max(0,categoryEntries.reduce((s,x)=>s+x[1],0));const catColors=['#23854F','#F0B429','#2B7BB9','#C2412D','#7A4FB5','#BFC8C1'];let acc=0;
   const conic=categoryEntries.length?categoryEntries.map((x,i)=>{const start=acc;acc+=catTotal?x[1]/catTotal*100:0;return `${catColors[i%catColors.length]} ${start}% ${acc}%`}).join(', '):'#e9efeb 0 100%';
   const draftTotal=(state.items||[]).reduce((s,item)=>s+Number(item.qty||0)*Number(item.cost||0),0);
   const freightValue=Math.max(0,Number(state.freight||0));
@@ -1766,7 +1823,7 @@ function renderEntradas(){
   <div class="entry-layout">
     <div class="card entry-table-card">
       <div class="entry-section-head"><div><h2>Últimas Entradas</h2><p>Compras e recebimentos que movimentam o estoque.</p></div><a href="#" id="viewAllEntries">Ver todas →</a></div>
-      <div class="table-wrap entry-table-wrap"><table class="table entry-table"><thead><tr><th>Documento</th><th>Data</th><th>Fornecedor</th><th>Produto</th><th>Qtd</th><th>Custo Unit.</th><th>Total</th><th>Pagamento</th><th>Status</th><th>Ações</th></tr></thead><tbody>${recent.map(e=>`<tr><td><strong>${esc(e.nf||'-')}</strong><small class="entry-doc-type">${esc(e.docType||'Documento')}</small></td><td>${esc(e.date||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.product||'-')}</td><td>${esc(qtyLabel(e.qty,e.unit||productUnit(data.products.find(p=>p.id===e.productId))))}</td><td>${money(e.cost)}</td><td><strong>${money(entryTotal(e))}</strong></td><td>${esc(e.payment||'-')}${e.expenseId?'<small class="entry-expense-linked">Despesa vinculada</small>':''}</td><td>${badge(e.status||'Recebida')}</td><td><div class="stock-actions">${e.status!=='Recebida'?`<button class="icon-btn" data-receive-entry="${e.id}" title="Receber mercadoria">${ic('check')}</button>`:''}<button class="icon-btn" data-edit-entry="${e.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-entry="${e.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="10"><div class="empty stock-empty-inline">Nenhuma entrada registrada ainda.</div></td></tr>`}</tbody></table></div>
+      <div class="table-wrap entry-table-wrap"><table class="table entry-table"><thead><tr><th>Documento</th><th>Data</th><th>Fornecedor</th><th>Produto</th><th>Qtd</th><th>Custo Unit.</th><th>Total</th><th>Pagamento</th><th>Status</th><th>Ações</th></tr></thead><tbody>${recent.map(e=>`<tr><td><strong>${esc(e.nf||'-')}</strong><small class="entry-doc-type">${esc(e.docType||'Documento')}</small></td><td>${esc(dateBR(e.date))}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.product||'-')}</td><td>${esc(qtyLabel(e.qty,e.unit||productUnit(data.products.find(p=>p.id===e.productId))))}</td><td>${money(e.cost)}</td><td><strong>${money(entryTotal(e))}</strong></td><td>${esc(e.payment||'-')}${e.expenseId?'<small class="entry-expense-linked">Despesa vinculada</small>':''}</td><td>${badge(e.status||'Recebida')}</td><td><div class="stock-actions">${e.status!=='Recebida'?`<button class="icon-btn" data-receive-entry="${e.id}" title="Receber mercadoria">${ic('check')}</button>`:''}<button class="icon-btn" data-edit-entry="${e.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-entry="${e.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`).join('')||`<tr><td colspan="10"><div class="empty stock-empty-inline">Nenhuma entrada registrada ainda.</div></td></tr>`}</tbody></table></div>
     </div>
     <section class="card entry-form-card">
       <div class="entry-form-head"><div class="entry-form-title"><span class="entry-form-icon">${ic('plus')}</span><div><h2>Nova Entrada</h2><p>Registre uma compra, mesmo quando não houver nota fiscal.</p></div></div></div>
@@ -2009,7 +2066,7 @@ function renderDespesas(){
   const categoryTotals={};filtered.forEach(e=>categoryTotals[e.category||'Outros']=(categoryTotals[e.category||'Outros']||0)+Number(e.value||0));
   let cats=Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1]);if(cats.length>6){cats=[...cats.slice(0,5),['Outros',cats.slice(5).reduce((s,x)=>s+x[1],0)]]}
   const catTotal=Math.max(0,cats.reduce((s,x)=>s+x[1],0));
-  const palette=['#2e8e59','#58bc72','#5e93d9','#f0a934','#c9793b','#835fc5','#bbc6be'];
+  const palette=['#23854F','#F0B429','#2B7BB9','#C2412D','#7A4FB5','#1F8F8A','#BFC8C1'];
   let acc=0;const conic=cats.length?cats.map((x,i)=>{const a=acc;acc+=x[1]/catTotal*100;return `${palette[i%palette.length]} ${a}% ${acc}%`}).join(', '):'#e8efea 0 100%';
   const rows=filtered.map(e=>{const meta=expenseCategoryMeta(e.category);const pay=expensePaymentMeta(e.payment);return `<tr><td>${formatDateBR(e.date)}</td><td><span class="expense-cat-badge ${meta.className}"><i>${ic(meta.icon)}</i>${esc(e.category||'Outros')}</span></td><td><div class="expense-description"><strong>${esc(e.description||'-')}</strong>${e.receiptName?`<small>${ic('paperclip')} ${esc(e.receiptName)}</small>`:''}</div></td><td>${esc(e.supplier||'-')}</td><td><span class="expense-pay-badge"><i>${ic(pay.icon)}</i>${esc(pay.label)}</span></td><td><strong>${money(e.value||0)}</strong></td><td><span class="expense-status ${expenseStatusClass(e.status)}">${esc(e.status||'-')}</span></td><td><div class="stock-actions"><button class="icon-btn" data-edit-expense="${e.id}" title="Editar">${ic('edit')}</button><button class="icon-btn" data-receipt-expense="${e.id}" title="Comprovante">${ic('paperclip')}</button><button class="icon-btn danger" data-del-expense="${e.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`}).join('');
   $('#page').innerHTML=`
@@ -2228,10 +2285,10 @@ function renderFiados(){
     <div class="card debt-list-card">
       <div class="debt-tabs"><a class="active" href="fiados.html">${ic('credit')}Contas a Receber (Fiados)</a><a href="clientes.html">${ic('users')}Clientes</a><button class="btn primary" id="newDebt">${ic('cart')}Nova Venda Fiada</button></div>
       <div class="debt-toolbar"><label class="debt-search"><i>${ic('report')}</i><input id="debtSearch" value="${esc(state.search)}" placeholder="Buscar cliente, telefone, CPF/CNPJ ou descrição..."></label><select id="debtStatus"><option ${state.status==='Todos'?'selected':''}>Todos</option><option ${state.status==='Em atraso'?'selected':''}>Em atraso</option><option ${state.status==='A vencer'?'selected':''}>A vencer</option><option ${state.status==='Em dia'?'selected':''}>Em dia</option><option ${state.status==='Pago'?'selected':''}>Pago</option></select><select id="debtDue"><option ${state.due==='Todos'?'selected':''}>Todos</option><option ${state.due==='Vencidos'?'selected':''}>Vencidos</option><option ${state.due==='Próximos 7 dias'?'selected':''}>Próximos 7 dias</option><option ${state.due==='Pagos'?'selected':''}>Pagos</option></select></div>
-      <div class="table-wrap debt-table-wrap"><table class="table debt-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Vencimento</th><th>Valor</th><th>Saldo</th><th>Status</th><th>Ações</th></tr></thead><tbody>${view.map(d=>{const c=data.clients.find(x=>x.id===d.clientId);const status=debtStatusLabel(d);const days=d.due?Math.ceil((new Date(d.due+'T23:59:59')-new Date())/86400000):null;return `<tr class="${state.selectedClientId===d.clientId?'selected-row':''}" data-select-client="${d.clientId}"><td><div class="client-name-cell"><span class="client-avatar-sm">${clientInitials(c?.name||'CL')}</span><strong>${esc(c?.name||'Cliente')}</strong></div></td><td>${esc(formatPhoneBR(c?.phone))}</td><td>${esc(d.due||'-')}${days!==null&&d.status!=='Pago'?`<small class="due-note ${days<0?'late':''}">${days<0?`${Math.abs(days)} dia(s) de atraso`:`${days} dia(s)`}</small>`:''}</td><td>${money(d.value)}</td><td><strong>${money(d.balance)}</strong></td><td><span class="debt-status ${debtStatusClass(d)}">${status}</span></td><td><div class="stock-actions">${d.status!=='Pago'?`<button class="icon-btn" data-pay-debt="${d.id}" title="Registrar pagamento">${ic('wallet')}</button>`:''}<button class="icon-btn" data-edit-debt="${d.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-debt="${d.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`}).join('')||`<tr><td colspan="7"><div class="empty stock-empty-inline">Nenhum fiado encontrado.</div></td></tr>`}</tbody></table></div>
+      <div class="table-wrap debt-table-wrap"><table class="table debt-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Vencimento</th><th>Valor</th><th>Saldo</th><th>Status</th><th>Ações</th></tr></thead><tbody>${view.map(d=>{const c=data.clients.find(x=>x.id===d.clientId);const status=debtStatusLabel(d);const days=d.due?Math.ceil((new Date(d.due+'T23:59:59')-new Date())/86400000):null;return `<tr class="${state.selectedClientId===d.clientId?'selected-row':''}" data-select-client="${d.clientId}"><td><div class="client-name-cell"><span class="client-avatar-sm">${clientInitials(c?.name||'CL')}</span><strong>${esc(c?.name||'Cliente')}</strong></div></td><td>${esc(formatPhoneBR(c?.phone))}</td><td>${esc(dateBR(d.due))}${days!==null&&d.status!=='Pago'?`<small class="due-note ${days<0?'late':''}">${days<0?`${Math.abs(days)} dia(s) de atraso`:`${days} dia(s)`}</small>`:''}</td><td>${money(d.value)}</td><td><strong>${money(d.balance)}</strong></td><td><span class="debt-status ${debtStatusClass(d)}">${status}</span></td><td><div class="stock-actions">${d.status!=='Pago'?`<button class="icon-btn" data-pay-debt="${d.id}" title="Registrar pagamento">${ic('wallet')}</button>`:''}<button class="icon-btn" data-edit-debt="${d.id}" title="Editar">${ic('edit')}</button><button class="icon-btn danger" data-del-debt="${d.id}" title="Excluir">${ic('trash')}</button></div></td></tr>`}).join('')||`<tr><td colspan="7"><div class="empty stock-empty-inline">Nenhum fiado encontrado.</div></td></tr>`}</tbody></table></div>
       <div class="stock-pagination"><span>Exibindo ${filtered.length?start+1:0} a ${Math.min(start+perPage,filtered.length)} de ${filtered.length} registro(s)</span><div class="stock-page-buttons">${Array.from({length:pages},(_,i)=>i+1).map(n=>`<button class="${n===state.page?'active':''}" data-debt-page="${n}">${n}</button>`).join('')}</div></div>
     </div>
-    <aside class="card debt-client-card">${selectedClient?`<div class="debt-client-head"><div class="client-avatar-lg">${clientInitials(selectedClient.name)}</div><div><h2>${esc(selectedClient.name)}</h2><span class="client-active-badge">Cliente ativo</span></div></div><div class="client-contact-list"><div>${ic('users')}<span>${esc(formatPhoneBR(selectedClient.phone))}</span></div><div>${ic('report')}<span>${esc(selectedClient.email||'-')}</span></div><div>${ic('report')}<span>${esc(selectedClient.document||'-')}</span></div><div>${ic('report')}<span>${esc(selectedClient.city||'-')}</span></div></div><div class="client-debt-summary"><div class="danger"><small>Total em Aberto</small><strong>${money(selectedTotal)}</strong></div><div class="danger"><small>Em Atraso</small><strong>${money(selectedLate)}</strong></div><div class="success"><small>A Vencer</small><strong>${money(selectedSoon)}</strong></div></div><div class="client-debt-actions"><button class="btn primary" id="paySelectedClient">${ic('wallet')}Registrar Pagamento</button><button class="btn outline" id="newSelectedDebt">${ic('cart')}Nova Venda Fiada</button><button class="btn outline" id="editSelectedClient">${ic('edit')}Editar Cliente</button><a class="btn outline" href="clientes.html">${ic('users')}Ver Cadastro</a></div><div class="client-history-tabs"><button class="active">Compras Fiadas em Aberto</button></div><div class="client-sale-lines">${selectedOpen.slice(0,4).map(d=>{const s=data.sales.find(x=>x.id===d.saleId);return `<div class="client-sale-line"><div><strong>${esc(s?String(s.id).slice(-6):'Fiado')}</strong><small>${esc((s?.lines||[]).map(l=>`${l.qty}x ${l.name}`).join(', ')||d.description||'Venda fiada')}</small></div><span>${money(d.balance)}</span></div>`}).join('')||'<div class="small-empty">Nenhuma compra fiada em aberto.</div>'}</div><div class="client-history-tabs"><button class="active">Histórico de Pagamentos</button></div><div class="client-payment-history">${payments.slice(0,6).map(p=>`<div class="payment-history-row"><span>${esc(p.date||'-')}</span><span>${esc(p.method||'Pagamento')}</span><strong>${money(p.value)}</strong></div>`).join('')||'<div class="small-empty">Nenhum pagamento registrado.</div>'}</div>`:`<div class="empty client-detail-empty">Cadastre um cliente para começar a controlar os fiados.</div>`}</aside>
+    <aside class="card debt-client-card">${selectedClient?`<div class="debt-client-head"><div class="client-avatar-lg">${clientInitials(selectedClient.name)}</div><div><h2>${esc(selectedClient.name)}</h2><span class="client-active-badge">Cliente ativo</span></div></div><div class="client-contact-list"><div>${ic('users')}<span>${esc(formatPhoneBR(selectedClient.phone))}</span></div><div>${ic('report')}<span>${esc(selectedClient.email||'-')}</span></div><div>${ic('report')}<span>${esc(selectedClient.document||'-')}</span></div><div>${ic('report')}<span>${esc(selectedClient.city||'-')}</span></div></div><div class="client-debt-summary"><div class="danger"><small>Total em Aberto</small><strong>${money(selectedTotal)}</strong></div><div class="danger"><small>Em Atraso</small><strong>${money(selectedLate)}</strong></div><div class="success"><small>A Vencer</small><strong>${money(selectedSoon)}</strong></div></div><div class="client-debt-actions"><button class="btn primary" id="paySelectedClient">${ic('wallet')}Registrar Pagamento</button><button class="btn outline" id="newSelectedDebt">${ic('cart')}Nova Venda Fiada</button><button class="btn outline" id="editSelectedClient">${ic('edit')}Editar Cliente</button><a class="btn outline" href="clientes.html">${ic('users')}Ver Cadastro</a></div><div class="client-history-tabs"><button class="active">Compras Fiadas em Aberto</button></div><div class="client-sale-lines">${selectedOpen.slice(0,4).map(d=>{const s=data.sales.find(x=>x.id===d.saleId);return `<div class="client-sale-line"><div><strong>${esc(s?String(s.id).slice(-6):'Fiado')}</strong><small>${esc((s?.lines||[]).map(l=>`${l.qty}x ${l.name}`).join(', ')||d.description||'Venda fiada')}</small></div><span>${money(d.balance)}</span></div>`}).join('')||'<div class="small-empty">Nenhuma compra fiada em aberto.</div>'}</div><div class="client-history-tabs"><button class="active">Histórico de Pagamentos</button></div><div class="client-payment-history">${payments.slice(0,6).map(p=>`<div class="payment-history-row"><span>${esc(dateBR(p.date))}</span><span>${esc(p.method||'Pagamento')}</span><strong>${money(p.value)}</strong></div>`).join('')||'<div class="small-empty">Nenhum pagamento registrado.</div>'}</div>`:`<div class="empty client-detail-empty">Cadastre um cliente para começar a controlar os fiados.</div>`}</aside>
   </div>`;
   $('#newDebt').onclick=()=>location.href='vendas.html';
   let debtSearchTimer;
@@ -2298,21 +2355,23 @@ function analyticsSaleCost(line){return analyticsSaleUnitCost(line)*Number(line?
 function analyticsSaleRevenue(line){return (Number(line?.price||0)*Number(line?.qty||0))-Number(line?.discount||0)}
 function analyticsFmt(v){return Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:0})}
 function analyticsPct(v){return `${Number(v||0).toFixed(1).replace('.',',')}%`}
-function analyticsHorizontalBars(items,valueFormatter=money){
+function analyticsHorizontalBars(items,valueFormatter=money,color=CHART_COLORS[0]){
   if(!items.length)return '<div class="analytics-empty">Sem dados para o período selecionado.</div>';
   const max=Math.max(1,...items.map(x=>Number(x.value||0)));
-  return `<div class="analytics-hbars">${items.map((x,i)=>`<div class="analytics-hrow"><div class="analytics-hlabel"><span>${esc(x.label)}</span><b>${valueFormatter(x.value)}</b></div><div class="analytics-track"><span style="width:${Math.max(3,Number(x.value||0)/max*100)}%"></span></div>${x.sub?`<small>${esc(x.sub)}</small>`:''}</div>`).join('')}</div>`;
+  const total=items.reduce((s,x)=>s+Math.max(0,Number(x.value||0)),0);
+  const colorOf=i=>Array.isArray(color)?color[i%color.length]:color;
+  return `<div class="analytics-hbars">${items.map((x,i)=>`<div class="analytics-hrow"><div class="analytics-hlabel"><span>${esc(x.label)}</span><b>${valueFormatter(x.value)}${total>0&&items.length>1?`<i class="an-share">${analyticsPct(Math.max(0,Number(x.value||0))/total*100)}</i>`:''}</b></div><div class="analytics-track"><span style="--bar:${colorOf(i)};width:${Math.max(3,Number(x.value||0)/max*100)}%"></span></div>${x.sub?`<small>${esc(x.sub)}</small>`:''}</div>`).join('')}</div>`;
 }
 function analyticsDonut(items,total,centerLabel='Total'){
   if(!items.length||!total)return '<div class="analytics-empty">Sem dados suficientes para composição.</div>';
-  const colors=['#087f5b','#2563eb','#f59e0b','#e34d59','#7c3aed','#0891b2','#db2777','#65a30d'];
+  const colors=['#23854F','#F0B429','#2B7BB9','#C2412D','#7A4FB5','#1F8F8A','#8BBF4A','#A86B3C'];
   let acc=0;
   const gradient=items.map((x,i)=>{const s=acc;acc+=Number(x.value||0)/total*100;return `${colors[i%colors.length]} ${s}% ${acc}%`}).join(', ');
   return `<div class="analytics-donut-wrap"><div class="analytics-donut" style="background:conic-gradient(${gradient})"><div class="analytics-donut-center"><strong>${money(total)}</strong><small>${esc(centerLabel)}</small></div></div><div class="analytics-donut-legend">${items.map((x,i)=>`<div class="${x.tip?'analytics-legend-tip':''}" ${x.tip?`data-tip="${esc(x.tip)}" title="${esc(x.tip)}"`:''}><span><i style="background:${colors[i%colors.length]}"></i>${esc(x.label)}</span><b>${analyticsPct(Number(x.value||0)/total*100)}</b></div>`).join('')}</div></div>`;
 }
 function analyticsPaymentDonut(items,total,centerLabel='Vendas'){
   if(!items.length||!total)return '<div class="analytics-empty">Sem dados suficientes para composição.</div>';
-  const colors=['#087f5b','#2563eb','#f59e0b','#e34d59','#7c3aed','#0891b2','#db2777','#65a30d'];
+  const colors=['#23854F','#F0B429','#2B7BB9','#C2412D','#7A4FB5','#1F8F8A','#8BBF4A','#A86B3C'];
   const r=46,circ=2*Math.PI*r;
   let offset=0;
   const circles=items.map((x,i)=>{
@@ -2334,7 +2393,11 @@ function analyticsGroupedBars(items){
 function analyticsDailyBars(items){
   if(!items.length)return '<div class="analytics-empty">Sem vendas no período.</div>';
   const max=Math.max(1,...items.map(x=>Number(x.value||0)));
-  return `<div class="analytics-daily-chart">${items.map(x=>`<div class="analytics-day-col"><div class="analytics-day-value">${money(x.value)}</div><div class="analytics-day-bar" style="height:${Math.max(4,x.value/max*100)}%" data-tip="${esc(x.label)} • ${money(x.value)}"></div><small>${esc(x.short)}</small></div>`).join('')}</div>`;
+  const avg=items.reduce((s,x)=>s+Number(x.value||0),0)/items.length;
+  const best=items.reduce((b,x)=>Number(x.value||0)>Number(b.value||0)?x:b,items[0]);
+  const above=items.filter(x=>Number(x.value||0)>=avg).length;
+  const summary=`<div class="an-day-summary"><span><i class="k-avg"></i>Média diária <b>${money(avg)}</b></span><span><i class="k-best"></i>Melhor dia <b>${esc(best.label)} · ${money(best.value)}</b></span><span><i class="k-low"></i>Abaixo da média <b>${items.length-above} de ${items.length} dias</b></span></div>`;
+  return `${summary}<div class="analytics-daily-chart">${items.map(x=>{const v=Number(x.value||0);const cls=x===best?'best':(v<avg?'low':'');return `<div class="analytics-day-col"><div class="analytics-day-value">${money(x.value)}</div><div class="analytics-day-bar ${cls}" style="height:${Math.max(4,v/max*100)}%" data-tip="${esc(x.label)} • ${money(x.value)}${v<avg?' • abaixo da média':''}"></div><small>${esc(x.short)}</small></div>`}).join('')}</div>`;
 }
 function exportAnalyticsCSV(rows,name='painel_geral.csv'){
   downloadCSV(name,['Data','Tipo','Descrição','Categoria','Cliente/Fornecedor','Pagamento/Status','Valor'],rows)
@@ -2424,13 +2487,34 @@ function renderIndicadores(){
 
   const expenses=data.expenses.filter(e=>analyticsInRange(e.date,state.start,state.end));
   const entries=data.entries.filter(e=>analyticsInRange(e.date,state.start,state.end)).filter(e=>{
-    if(state.supplier!=='Todos'&&e.supplier!==state.supplier)return false;
+    if(state.supplier!=='Todos'&&!sameName(e.supplier,state.supplier))return false;
     if(state.category!=='Todas'){
       const p=analyticsProduct(e.productId);
       if((p?.category||'Sem categoria')!==state.category)return false;
     }
     return true;
   });
+  // Período anterior (mesmo número de dias) com os mesmos filtros, para as setas ▲▼
+  const periodCalc=(start,end)=>{
+    const ps=data.sales.filter(s=>analyticsInRange(s.date,start,end)).filter(s=>{
+      const pay=s.paymentType||(/^Cartão/.test(s.payment||'')?'Cartão':s.payment);
+      if(state.payment!=='Todos'&&pay!==state.payment)return false;
+      if(state.category!=='Todas')return (s.lines||[]).some(line=>analyticsSaleCategory(line)===state.category);
+      return true;
+    });
+    const pl=ps.flatMap(s=>(s.lines||[]).filter(line=>state.category==='Todas'||analyticsSaleCategory(line)===state.category));
+    const revenue=pl.reduce((sum,l)=>sum+analyticsSaleRevenue(l),0),cost=pl.reduce((sum,l)=>sum+analyticsSaleCost(l),0);
+    const exp=data.expenses.filter(e=>analyticsInRange(e.date,start,end)).reduce((a,e)=>a+Number(e.value||0),0);
+    const ent=data.entries.filter(e=>analyticsInRange(e.date,start,end)).filter(e=>{
+      if(state.supplier!=='Todos'&&!sameName(e.supplier,state.supplier))return false;
+      if(state.category!=='Todas'&&((analyticsProduct(e.productId)?.category)||'Sem categoria')!==state.category)return false;
+      return true;
+    }).reduce((a,e)=>a+Number(e.qty||0)*Number(e.cost||0),0);
+    return {revenue,cost,profit:revenue-cost,count:ps.length,ticket:ps.length?revenue/ps.length:0,expenses:exp,net:revenue-cost-exp,entries:ent};
+  };
+  const prevRange=previousRange(state.start,state.end);
+  const prev=prevRange.start?periodCalc(prevRange.start,prevRange.end):null;
+  const dt=(cur,key,inverse=false)=>prev?deltaTag(cur,prev[key],'vs anterior',inverse):'';
   const debts=data.debts.filter(d=>analyticsInRange(d.createdAt||d.due,state.start,state.end));
   const payments=data.payments.filter(p=>analyticsInRange(p.date,state.start,state.end));
 
@@ -2517,7 +2601,7 @@ function renderIndicadores(){
   const stockCat={};
   data.products.forEach(p=>{
     if(state.category!=='Todas'&&p.category!==state.category)return;
-    if(state.supplier!=='Todos'&&p.supplier!==state.supplier)return;
+    if(state.supplier!=='Todos'&&!sameName(p.supplier,state.supplier))return;
     const c=p.category||'Sem categoria';
     const closed=Number(p.stock||0)*Number(p.cost||0);
     const open=productHasFraction(p)&&Number(p.packageSize||0)>0?(Number(p.fractionStock||0)/Number(p.packageSize||1))*Number(p.cost||0):0;
@@ -2525,9 +2609,7 @@ function renderIndicadores(){
   });
   const stockItems=Object.entries(stockCat).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,7);
 
-  const supplierMap={};
-  entries.forEach(e=>supplierMap[e.supplier||'Sem fornecedor']=(supplierMap[e.supplier||'Sem fornecedor']||0)+Number(e.qty||0)*Number(e.cost||0));
-  const supplierItems=Object.entries(supplierMap).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,6);
+  const supplierItems=groupByName(entries,e=>e.supplier,e=>Number(e.qty||0)*Number(e.cost||0)).sort((a,b)=>b.value-a.value).slice(0,6);
 
   const fiadoMap={Em_aberto:0,Parcial:0,Recebido:0};
   data.sales.filter(s=>analyticsInRange(s.date,state.start,state.end)&&s.paymentType==='Fiado').forEach(s=>{
@@ -2555,19 +2637,19 @@ function renderIndicadores(){
       <label><span>Categoria</span><select id="anCategory">${categories.map(x=>`<option ${x===state.category?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
       <label><span>Pagamento</span><select id="anPayment">${paymentOptions.map(x=>`<option ${x===state.payment?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
       <label><span>Fornecedor</span><select id="anSupplier">${suppliers.map(x=>`<option ${x===state.supplier?'selected':''}>${esc(x)}</option>`).join('')}</select></label>
-      <div class="analytics-filter-actions"><button class="btn outline" id="anClear">${ic('filter')}Limpar</button><button class="btn outline" id="salesPdfTop">${ic('report')}PDF de vendas</button><button class="btn primary" id="anExport">${ic('download')}Exportar geral</button></div>
+      ${prev?`<p class="an-compare-note">▲▼ comparam com ${dateBR(prevRange.start)} a ${dateBR(prevRange.end)}, os ${prevRange.days} dia(s) anteriores, com os mesmos filtros.</p>`:''}<div class="analytics-filter-actions"><button class="btn outline" id="anClear">${ic('filter')}Limpar</button><button class="btn outline" id="salesPdfTop">${ic('report')}PDF de vendas</button><button class="btn primary" id="anExport">${ic('download')}Exportar geral</button></div>
     </div>
   </div>
 
   <div class="analytics-kpi-grid">
-    <article class="card analytics-kpi"><div class="analytics-kpi-icon green">${ic('cart')}</div><div><small>Faturamento</small><strong>${money(salesRevenue)}</strong><span>${filteredSales.length} venda(s)</span></div></article>
-    <article class="card analytics-kpi"><div class="analytics-kpi-icon blue">${ic('credit')}</div><div><small>Ticket Médio</small><strong>${money(ticket)}</strong><span>Valor médio por venda</span></div></article>
-    <article class="card analytics-kpi"><div class="analytics-kpi-icon emerald">${ic('chart')}</div><div><small>Lucro Bruto Est.</small><strong>${money(grossProfit)}</strong><span>Custo vendido: ${money(salesCost)} • Margem: ${salesRevenue>0?analyticsPct(grossProfit/salesRevenue*100):'0,0%'}</span></div></article>
-    <article class="card analytics-kpi"><div class="analytics-kpi-icon rose">${ic('wallet')}</div><div><small>Despesas</small><strong>${money(totalExpenses)}</strong><span>${expenses.length} lançamento(s)</span></div></article>
-    <article class="card analytics-kpi"><div class="analytics-kpi-icon ${netResult>=0?'green':'rose'}">${ic('bank')}</div><div><small>Resultado Est.</small><strong>${money(netResult)}</strong><span>Lucro bruto menos despesas</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon green">${ic('cart')}</div><div><small>Faturamento</small><strong>${money(salesRevenue)}</strong>${dt(salesRevenue,'revenue')}<span>${filteredSales.length} venda(s)</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon blue">${ic('credit')}</div><div><small>Ticket Médio</small><strong>${money(ticket)}</strong>${dt(ticket,'ticket')}<span>Valor médio por venda</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon emerald">${ic('chart')}</div><div><small>Lucro Bruto Est.</small><strong>${money(grossProfit)}</strong>${dt(grossProfit,'profit')}<span>Custo vendido: ${money(salesCost)} • Margem: ${salesRevenue>0?analyticsPct(grossProfit/salesRevenue*100):'0,0%'}</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon rose">${ic('wallet')}</div><div><small>Despesas</small><strong>${money(totalExpenses)}</strong>${dt(totalExpenses,'expenses',true)}<span>${expenses.length} lançamento(s)</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon ${netResult>=0?'green':'rose'}">${ic('bank')}</div><div><small>Resultado Est.</small><strong>${money(netResult)}</strong>${dt(netResult,'net')}<span>Lucro bruto menos despesas</span></div></article>
     <article class="card analytics-kpi"><div class="analytics-kpi-icon amber">${ic('users')}</div><div><small>Fiados em Aberto</small><strong>${money(openDebt)}</strong><span>A receber atualmente</span></div></article>
     <article class="card analytics-kpi"><div class="analytics-kpi-icon purple">${ic('box')}</div><div><small>Valor do Estoque</small><strong>${money(stockValue)}</strong><span>${lowStock} item(ns) em baixo estoque</span></div></article>
-    <article class="card analytics-kpi"><div class="analytics-kpi-icon teal">${ic('tray')}</div><div><small>Entradas</small><strong>${money(entries.reduce((s,e)=>s+Number(e.qty||0)*Number(e.cost||0),0))}</strong><span>${entries.length} lançamento(s)</span></div></article>
+    <article class="card analytics-kpi"><div class="analytics-kpi-icon teal">${ic('tray')}</div><div><small>Entradas</small><strong>${money(entries.reduce((s,e)=>s+Number(e.qty||0)*Number(e.cost||0),0))}</strong>${dt(entries.reduce((s,e)=>s+Number(e.qty||0)*Number(e.cost||0),0),'entries','neutral')}<span>${entries.length} lançamento(s)</span></div></article>
   </div>
 
   <div class="analytics-fraction-grid">
@@ -2578,8 +2660,8 @@ function renderIndicadores(){
   </div>
 
   <div class="analytics-grid-3 analytics-fraction-section">
-    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Inteiro x Fracionado</h2><p>Comparação do faturamento por forma de saída.</p></div></div>${analyticsHorizontalBars([{label:'Embalagem inteira',value:packageRevenue},{label:'Fracionado',value:fractionalRevenue}],money)}</div>
-    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Fracionados Mais Vendidos</h2><p>Ranking por faturamento, sem misturar kg com metros.</p></div></div>${analyticsHorizontalBars(topFractionProducts,money)}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Inteiro x Fracionado</h2><p>Comparação do faturamento por forma de saída.</p></div></div>${analyticsHorizontalBars([{label:'Embalagem inteira',value:packageRevenue},{label:'Fracionado',value:fractionalRevenue}],money,[CHART_COLORS[0],CHART_COLORS[1]])}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Fracionados Mais Vendidos</h2><p>Ranking por faturamento, sem misturar kg com metros.</p></div></div>${analyticsHorizontalBars(topFractionProducts,money,'#1F8F8A')}</div>
     <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Saldos Abertos</h2><p>O que já foi aberto e ainda está disponível.</p></div></div><div class="analytics-summary-list fraction-open-list">${productsWithOpenStock.slice(0,6).map(p=>`<div><span>${ic('box')} ${esc(p.name)}</span><b>${qtyLabel(p.fractionStock,p.fractionUnit)}</b></div>`).join('')||'<div class="analytics-empty">Nenhum produto com saldo aberto.</div>'}</div></div>
   </div>
 
@@ -2606,13 +2688,13 @@ function renderIndicadores(){
   </div>
 
   <div class="analytics-grid-3">
-    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Produtos Mais Vendidos</h2><p>Ranking por faturamento, preservando a unidade vendida.</p></div></div>${analyticsHorizontalBars(topProducts,money)}</div>
-    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Principais Despesas</h2><p>Valor por categoria.</p></div></div>${analyticsHorizontalBars(topExpenses,money)}</div>
-    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Estoque por Categoria</h2><p>Valor de custo disponível por categoria.</p></div></div>${analyticsHorizontalBars(stockItems,money)}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Produtos Mais Vendidos</h2><p>Ranking por faturamento, preservando a unidade vendida.</p></div></div>${analyticsHorizontalBars(topProducts,money,'#23854F')}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Principais Despesas</h2><p>Valor por categoria.</p></div></div>${analyticsHorizontalBars(topExpenses,money,'#C2412D')}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Estoque por Categoria</h2><p>Valor de custo disponível por categoria.</p></div></div>${analyticsHorizontalBars(stockItems,money,CHART_COLORS)}</div>
   </div>
 
   <div class="analytics-grid-3">
-    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Entradas por Fornecedor</h2><p>Compras no período.</p></div></div>${analyticsHorizontalBars(supplierItems,money)}</div>
+    <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Entradas por Fornecedor</h2><p>Compras no período.</p></div></div>${analyticsHorizontalBars(supplierItems,money,'#2B7BB9')}</div>
     <div class="card analytics-mini-card"><div class="analytics-title"><div><h2>Situação dos Fiados</h2><p>Visão financeira das vendas fiadas.</p></div></div>${analyticsDonut(fiadoItems,fiadoItems.reduce((s,x)=>s+x.value,0),'Fiados')}</div>
     <div class="card analytics-mini-card">
       <div class="analytics-title"><div><h2>Resumo Operacional</h2><p>Visão rápida do cadastro e movimentação.</p></div></div>
@@ -2648,7 +2730,7 @@ function renderIndicadores(){
         <button class="btn primary" id="printAnalytics">${ic('report')}Imprimir painel</button>
       </div>
     </div>
-    <div class="analytics-table-wrap"><table class="table analytics-table"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Cliente / Fornecedor</th><th>Pagamento / Status</th><th>Valor</th></tr></thead><tbody>${combinedRows.slice(0,12).map(r=>`<tr><td>${esc(r[0])}</td><td><span class="analytics-type ${r[1].toLowerCase()}">${esc(r[1])}</span></td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td><td>${esc(r[5])}</td><td class="${Number(r[6])<0?'analytics-negative':''}"><strong>${money(Math.abs(Number(r[6]||0)))}</strong></td></tr>`).join('')||`<tr><td colspan="7"><div class="analytics-empty">Sem movimentações para o período.</div></td></tr>`}</tbody></table></div>
+    <div class="analytics-table-wrap"><table class="table analytics-table"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Cliente / Fornecedor</th><th>Pagamento / Status</th><th>Valor</th></tr></thead><tbody>${combinedRows.slice(0,12).map(r=>`<tr><td>${esc(dateBR(r[0]))}</td><td><span class="analytics-type ${r[1].toLowerCase()}">${esc(r[1])}</span></td><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td><td>${esc(r[5])}</td><td class="${Number(r[6])<0?'analytics-negative':''}"><strong>${money(Math.abs(Number(r[6]||0)))}</strong></td></tr>`).join('')||`<tr><td colspan="7"><div class="analytics-empty">Sem movimentações para o período.</div></td></tr>`}</tbody></table></div>
   </div>`;
 
   const apply=()=>{renderIndicadores.state={start:$('#anStart').value,end:$('#anEnd').value,category:$('#anCategory').value,payment:$('#anPayment').value,supplier:$('#anSupplier').value};renderIndicadores()};

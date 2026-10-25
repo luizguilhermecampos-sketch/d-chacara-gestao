@@ -380,3 +380,123 @@ html body #page .empty,html body #page .small-empty,html body #page .analytics-e
   html body #page .home-main-grid>*,
   html body #page .home-tables-grid>*{grid-column:auto!important;min-width:0}
 }
+
+/* ---------- Gráficos de rosca: um só padrão ----------
+   Corrige o centro quebrado em Entradas (valor colado na borda
+   e "em entradas" caindo dentro do anel). */
+html body #page .entry-donut-wrap,
+html body #page .analytics-donut-wrap{grid-template-columns:184px minmax(0,1fr)!important;gap:20px!important;align-items:center!important}
+html body #page .expense-donut-wrap{grid-template-columns:172px minmax(0,1fr)!important;gap:16px!important;align-items:center!important}
+html body #page .entry-donut,
+html body #page .analytics-donut{width:176px!important;height:176px!important;margin:0 auto!important}
+html body #page .expense-donut{width:164px!important;height:164px!important;margin:0 auto!important}
+html body #page .entry-donut:before,
+html body #page .expense-donut:before,
+html body #page .analytics-donut:before,
+html body #page .expense-donut-card.v2 .expense-donut:before{
+  width:66%!important;height:66%!important;box-shadow:0 0 0 1px rgba(15,61,43,.06),0 4px 14px -6px rgba(15,61,43,.25)!important;
+}
+html body #page .entry-donut-center,
+html body #page .expense-donut-center,
+html body #page .analytics-donut-center{
+  position:absolute!important;inset:0!important;padding:0!important;
+  display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;
+}
+html body #page .expense-donut-center-inner{width:auto!important;min-height:0!important;gap:3px!important}
+html body #page .entry-donut-center strong,
+html body #page .expense-donut-center strong,
+html body #page .analytics-donut-center strong{
+  font-family:var(--fonte-titulo)!important;font-size:15px!important;font-weight:700!important;line-height:1.05!important;
+  color:var(--tinta)!important;white-space:nowrap!important;letter-spacing:-.02em!important;margin:0!important;max-width:104px;
+  overflow:hidden;text-overflow:ellipsis;
+}
+html body #page .entry-donut-center small,
+html body #page .expense-donut-center small,
+html body #page .analytics-donut-center small{
+  font-size:10.5px!important;color:var(--suave)!important;margin:0!important;line-height:1.2!important;max-width:96px!important;
+}
+/* legendas legíveis, com o número alinhado */
+html body #page .entry-donut-legend .legend-row,
+html body #page .expense-donut-legend .legend-row,
+html body #page .analytics-donut-legend>div{
+  font-size:13px!important;padding:8px 10px!important;border-radius:8px;background:transparent!important;color:var(--tinta-2);
+}
+html body #page .entry-donut-legend .legend-row:nth-child(odd),
+html body #page .expense-donut-legend .legend-row:nth-child(odd),
+html body #page .analytics-donut-legend>div:nth-child(odd){background:#F5F8F2!important}
+html body #page .entry-donut-legend b,html body #page .entry-donut-legend strong,
+html body #page .expense-donut-legend b,html body #page .expense-donut-legend strong,
+html body #page .analytics-donut-legend b,html body #page .analytics-donut-legend strong{
+  font-variant-numeric:tabular-nums;color:var(--tinta)!important;font-weight:700!important;font-size:13px!important;
+}
+html body #page .entry-donut-legend i,
+html body #page .expense-donut-legend i,
+html body #page .analytics-donut-legend i{width:10px!important;height:10px!important;border-radius:3px!important}
+@media (max-width:760px){
+  html body #page .entry-donut-wrap,
+  html body #page .expense-donut-wrap,
+  html body #page .analytics-donut-wrap{grid-template-columns:1fr!important}
+}
+/* Despesas: card estreito, rosca em cima e legenda embaixo */
+html body #page .expense-donut-card .expense-donut-wrap{grid-template-columns:1fr!important;justify-items:stretch}
+html body #page .expense-donut-card .expense-donut-legend .legend-row{display:flex!important;justify-content:space-between!important;align-items:center}
+
+/* =================== v2.2 | leitura analítica =================== */
+
+/* Setas de comparação ▲▼ nos cards de indicador */
+html body #page em.kpi-delta{
+  display:inline-flex!important;align-items:center;gap:4px;width:max-content;max-width:100%;
+  margin:6px 0 0!important;padding:3px 8px!important;border-radius:999px;
+  font-style:normal!important;font-size:11.5px!important;font-weight:700!important;line-height:1.2!important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;
+}
+html body #page em.kpi-delta.good{background:var(--pasto-soft);color:#17693D}
+html body #page em.kpi-delta.bad{background:var(--urucum-soft);color:var(--urucum)}
+html body #page em.kpi-delta.neutral{background:var(--ceu-soft);color:var(--ceu)}
+html body #page em.kpi-delta.flat{background:#EEF1EC;color:var(--suave)}
+html body #page em.kpi-delta+.trend,
+html body #page em.kpi-delta+span{margin-top:4px!important}
+html body #page .an-compare-note{
+  grid-column:1/-1;order:99;margin:2px 0 0!important;font-size:12px!important;color:var(--suave)!important;
+}
+
+/* Barras horizontais: cada card com a sua cor (vem do app.js em --bar) */
+html body #page .analytics-track{background:#EDF1EA!important;height:10px!important}
+html body #page .analytics-track span{
+  background:var(--bar,var(--pasto))!important;
+  background:linear-gradient(90deg,var(--bar,var(--pasto)),color-mix(in srgb,var(--bar,var(--pasto)) 62%,#fff))!important;
+}
+html body #page .analytics-hlabel b{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+html body #page .an-share{
+  font-style:normal;font-size:10.5px;font-weight:700;color:var(--suave);background:#F1F4EE;border-radius:6px;padding:1px 6px;
+}
+/* Entradas por fornecedor (aba Entradas) em azul, igual aos Indicadores */
+html body #page .entry-supplier-bar{background:#EDF1EA!important}
+html body #page .entry-supplier-bar span{background:linear-gradient(90deg,var(--ceu),#7FB3DA)!important}
+
+/* Resumo acima dos gráficos de barras diárias */
+html body #page .an-day-summary{
+  display:flex!important;flex-wrap:wrap;gap:6px 18px;margin:0 0 12px!important;padding:0!important;
+  font-size:12px!important;color:var(--suave)!important;justify-content:flex-start!important;
+}
+html body #page .an-day-summary span{display:inline-flex!important;align-items:center;gap:6px}
+html body #page .an-day-summary b{color:var(--tinta);font-weight:700;font-variant-numeric:tabular-nums}
+html body #page .an-day-summary i{display:inline-block;width:10px!important;height:10px!important;border-radius:3px!important}
+html body #page .an-day-summary .k-avg{background:var(--pasto)!important}
+html body #page .an-day-summary .k-best{background:var(--milho)!important}
+html body #page .an-day-summary .k-low{background:#B9DCC3!important}
+
+/* Barras diárias: normal = verde, abaixo da média = verde claro, melhor dia = milho */
+html body #page .analytics-day-bar{background:linear-gradient(180deg,#4FAF72,var(--pasto))!important}
+html body #page .analytics-day-bar.low{background:linear-gradient(180deg,#CFE7D6,#A9D3B6)!important}
+html body #page .analytics-day-bar.best{background:linear-gradient(180deg,#F7CD5C,var(--milho))!important}
+html body #page .bar-item span{background:linear-gradient(180deg,#4FAF72,var(--pasto))!important}
+html body #page .bar-item.low span{background:linear-gradient(180deg,#CFE7D6,#A9D3B6)!important}
+html body #page .bar-item.best span{background:linear-gradient(180deg,#F7CD5C,var(--milho))!important}
+html body #page .bar-item:hover span,
+html body #page .analytics-day-bar:hover{filter:brightness(.92)}
+
+/* Receitas x Despesas nas cores da paleta */
+html body #page .analytics-vbar.revenue,html body #page .analytics-chart-legend i.revenue{background:var(--pasto)!important}
+html body #page .analytics-vbar.expense,html body #page .analytics-chart-legend i.expense{background:var(--urucum)!important}
+html body #page .chart-legend.an-day-summary span{font-size:12px!important;background:none!important;padding:0!important;border:0!important;color:var(--suave)!important;font-weight:500!important}
