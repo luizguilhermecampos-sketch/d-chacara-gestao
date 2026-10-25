@@ -1,0 +1,382 @@
+/* ============================================================
+   D CHÁCARA EMPÓRIO — TEMA VISUAL v2.0
+   Camada só de aparência. Carregar DEPOIS de pages.css e mobile.css.
+   Não altera dados, cálculos nem Supabase.
+   Para voltar ao visual antigo: remova o <link> de css/tema.css
+   e o <script> de js/tema.js das páginas.
+   ============================================================ */
+
+:root{
+  /* Paleta da roça */
+  --mata:#0F3D2B;        /* verde-mata: menu, títulos */
+  --mata-2:#17573C;
+  --pasto:#23854F;       /* verde-pasto: ação principal */
+  --pasto-soft:#E3F2E7;
+  --broto:#7CC46B;       /* verde-broto: detalhes */
+  --milho:#F0B429;       /* amarelo-milho: destaque */
+  --milho-soft:#FDF3D7;
+  --milho-dark:#9A6B00;
+  --ceu:#2B7BB9;
+  --ceu-soft:#E3EFF8;
+  --urucum:#C2412D;
+  --urucum-soft:#FBE7E3;
+  --uva:#7A4FB5;
+  --uva-soft:#EFE8F8;
+  --rio:#1F8F8A;
+  --rio-soft:#DFF3F1;
+
+  --fundo:#EEF2EA;       /* fundo verde-sálvia bem claro */
+  --superficie:#FFFFFF;
+  --linha:#DCE4D6;
+  --linha-forte:#C9D5C2;
+  --tinta:#14261C;
+  --tinta-2:#3C4D42;
+  --suave:#66766B;
+
+  --raio-card:18px;
+  --raio-ctrl:12px;
+  --sombra:0 1px 2px rgba(15,61,43,.06),0 8px 24px -12px rgba(15,61,43,.18);
+  --sombra-hover:0 2px 4px rgba(15,61,43,.06),0 16px 32px -14px rgba(15,61,43,.28);
+
+  --fonte-titulo:"Bricolage Grotesque","Figtree",ui-sans-serif,system-ui,sans-serif;
+  --fonte:"Figtree",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+}
+
+/* ---------- Base ---------- */
+html body{
+  font-family:var(--fonte)!important;
+  background:var(--fundo)!important;
+  color:var(--tinta);
+  -webkit-font-smoothing:antialiased;
+}
+html body .main{background:var(--fundo)}
+html body h1,html body h2,html body h3{font-family:var(--fonte-titulo);letter-spacing:-.01em}
+html body ::selection{background:var(--milho);color:var(--mata)}
+html body :focus-visible{outline:3px solid rgba(240,180,41,.75)!important;outline-offset:2px}
+
+/* ---------- Menu lateral ---------- */
+html body .sidebar{
+  background:
+    radial-gradient(120% 60% at 0% 100%,rgba(124,196,107,.16),transparent 60%),
+    linear-gradient(180deg,#0B3123 0%,var(--mata) 45%,#0C3424 100%)!important;
+  border-right:1px solid rgba(255,255,255,.04);
+}
+/* folhas decorativas no rodapé do menu */
+html body .sidebar::after{
+  content:"";position:absolute;left:-30px;bottom:-30px;width:260px;height:220px;pointer-events:none;opacity:.10;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 260 220' fill='none' stroke='%23ffffff' stroke-width='2'%3E%3Cpath d='M40 220C60 150 110 100 190 70'/%3E%3Cpath d='M70 160c-30-6-48-30-50-62 32 2 54 22 50 62Z'/%3E%3Cpath d='M110 118c-6-34 10-62 40-76 12 30 0 60-40 76Z'/%3E%3Cpath d='M150 92c26-22 58-24 86-8-22 24-52 28-86 8Z'/%3E%3Cpath d='M95 135c30-14 62-8 84 14-30 12-60 8-84-14Z'/%3E%3C/svg%3E") no-repeat left bottom/contain;
+}
+html body .side-logo{border-color:var(--broto)!important;border-right-color:transparent!important}
+html body .side-logo:after{background:var(--milho)!important}
+html body .side-brand strong{font-family:var(--fonte-titulo);font-size:19px;letter-spacing:-.01em}
+html body .side-sub{color:var(--milho)!important;font-weight:700!important;letter-spacing:.01em}
+html body .nav{gap:4px!important}
+html body .nav a{
+  color:#DCEADF!important;font-weight:600!important;font-size:13px!important;
+  border-radius:12px!important;border:0!important;position:relative;padding:9px 12px!important;
+  background:transparent!important;box-shadow:none!important;
+}
+html body .nav a:hover{background:rgba(255,255,255,.07)!important;color:#fff!important}
+html body .nav i{
+  width:34px!important;height:34px!important;border-radius:10px!important;
+  background:rgba(255,255,255,.07)!important;color:#CFE6D5!important;flex:0 0 34px;
+}
+html body .nav a.active{
+  background:rgba(255,255,255,.10)!important;color:#fff!important;
+}
+html body .nav a.active::before{
+  content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:4px;border-radius:0 4px 4px 0;background:var(--milho);
+}
+html body .nav a.active i{background:var(--milho)!important;color:var(--mata)!important}
+
+/* ---------- Barra superior ---------- */
+html body .topbar{
+  background:rgba(238,242,234,.86)!important;border-bottom:1px solid var(--linha)!important;
+}
+html body .top-user,html body .bell{border-color:var(--linha)!important;box-shadow:none!important}
+html body .avatar{background:var(--milho-soft)!important;color:var(--milho-dark)!important}
+html body .logout{background:var(--mata)!important;color:#fff!important;font-weight:700!important;border-radius:10px!important}
+html body .logout:hover{background:var(--urucum)!important}
+html body .bell .count{background:var(--urucum)!important}
+html body .cloud-status{font-weight:700}
+
+/* ---------- Banner do topo (hero) ---------- */
+html body .hero,
+html body .hero.hero-home,
+html body .hero.hero-sales,
+html body .hero.hero-expenses{
+  background:
+    linear-gradient(95deg,rgba(11,49,35,.96) 0%,rgba(15,61,43,.88) 38%,rgba(15,61,43,.35) 72%,rgba(15,61,43,.10) 100%),
+    url('../assets/img/hero-farm-tema.jpg') center 60%/cover no-repeat!important;
+  border:0!important;border-radius:22px!important;
+  box-shadow:0 18px 40px -22px rgba(15,61,43,.55)!important;
+  min-height:150px!important;color:#fff;
+}
+html body .hero::before,html body .hero::after{opacity:0!important}
+html body .hero h1{
+  color:#fff!important;font-family:var(--fonte-titulo)!important;font-weight:800!important;
+  font-size:clamp(28px,3.2vw,40px)!important;letter-spacing:-.025em!important;line-height:1.05!important;margin:0 0 8px!important;
+  text-shadow:none!important;
+}
+html body .hero p,html body .hero .hero-quote{color:rgba(255,255,255,.86)!important;font-size:15px!important}
+html body .hero-underline{background:var(--milho)!important;width:56px!important;height:5px!important}
+html body .hero-tag{color:var(--milho)!important;text-shadow:0 2px 10px rgba(0,0,0,.35)!important}
+html body .hero::marker{display:none}
+
+/* ---------- Cards (todos) ---------- */
+html body #page .card,
+html body .pdv-main>.card,
+html body .pdv-side>.card{
+  background:var(--superficie)!important;
+  border:1px solid var(--linha)!important;
+  border-radius:var(--raio-card)!important;
+  box-shadow:var(--sombra)!important;
+}
+html body #page .card.hover:hover{box-shadow:var(--sombra-hover)!important;transform:translateY(-1px)}
+
+/* Títulos dos cards: mesmo tamanho, peso e cor em todas as telas */
+html body #page .card h2{
+  font-family:var(--fonte-titulo)!important;font-size:17px!important;font-weight:700!important;
+  color:var(--mata)!important;letter-spacing:-.01em!important;line-height:1.25!important;
+}
+html body #page .card h3{
+  font-family:var(--fonte-titulo)!important;font-size:15px!important;font-weight:700!important;color:var(--mata)!important;
+}
+html body #page .card p,html body #page .section-head small{color:var(--suave)}
+
+/* ícone adicionado pelo tema.js antes dos títulos */
+html body #page h2.t-has-ico,html body #page h3.t-has-ico{display:flex!important;align-items:center;gap:10px}
+.t-ico{
+  flex:0 0 30px;width:30px;height:30px;border-radius:9px;display:inline-grid;place-items:center;
+  background:var(--pasto-soft);color:var(--pasto);
+}
+.t-ico svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.t-ico[data-tone="milho"]{background:var(--milho-soft);color:var(--milho-dark)}
+.t-ico[data-tone="urucum"]{background:var(--urucum-soft);color:var(--urucum)}
+.t-ico[data-tone="ceu"]{background:var(--ceu-soft);color:var(--ceu)}
+.t-ico[data-tone="uva"]{background:var(--uva-soft);color:var(--uva)}
+.t-ico[data-tone="rio"]{background:var(--rio-soft);color:var(--rio)}
+
+/* ---------- Cards de indicador: um único modelo ----------
+   Vale para Início, Estoque, Entradas, Fiados, Clientes,
+   Despesas e Indicadores. A cor vem do data-tone (tema.js). */
+html body #page .stat-home,
+html body #page .stock-stat-card,
+html body #page .expense-stat,
+html body #page .analytics-kpi{
+  --tom:var(--pasto);--tom-soft:var(--pasto-soft);--tom-txt:var(--pasto);
+  display:grid!important;grid-template-columns:48px minmax(0,1fr)!important;align-items:center!important;
+  gap:14px!important;min-height:104px!important;height:auto!important;
+  padding:16px 18px 16px 20px!important;position:relative!important;overflow:hidden!important;
+  border-radius:var(--raio-card)!important;
+  background:var(--superficie)!important;
+  border:1px solid var(--linha)!important;
+}
+/* faixa colorida à esquerda, como a etiqueta de um saco de ração */
+html body #page .stat-home::before,
+html body #page .stock-stat-card::before,
+html body #page .expense-stat::before,
+html body #page .analytics-kpi::before{
+  content:""!important;position:absolute!important;left:0;top:0;bottom:0;width:5px;background:var(--tom)!important;
+  border-radius:0!important;opacity:1!important;display:block!important;height:auto!important;
+}
+/* elementos decorativos antigos, cada tela tinha um diferente */
+html body #page .stat-spark,
+html body #page .stat-line,
+html body #page .stat-alert,
+html body #page .stock-stat-bars,
+html body #page .expense-mini-bars{display:none!important}
+
+html body #page .stat-icon,
+html body #page .stock-stat-icon,
+html body #page .expense-stat-icon,
+html body #page .analytics-kpi-icon{
+  width:48px!important;height:48px!important;min-width:48px!important;border-radius:14px!important;
+  display:grid!important;place-items:center!important;margin:0!important;
+  background:var(--tom-soft)!important;color:var(--tom)!important;box-shadow:none!important;border:0!important;
+}
+html body #page .stat-icon svg,
+html body #page .stock-stat-icon svg,
+html body #page .expense-stat-icon svg,
+html body #page .analytics-kpi-icon svg{width:23px!important;height:23px!important;stroke:currentColor!important;color:inherit!important}
+
+html body #page .stat-home small,
+html body #page .stock-stat-card small,
+html body #page .expense-stat small,
+html body #page .analytics-kpi small{
+  display:block!important;font-size:12.5px!important;font-weight:600!important;color:var(--suave)!important;
+  text-transform:none!important;letter-spacing:0!important;line-height:1.3!important;margin:0 0 4px!important;
+  white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+}
+html body #page .stat-home strong,
+html body #page .stock-stat-card strong,
+html body #page .expense-stat strong,
+html body #page .analytics-kpi strong{
+  display:block!important;font-family:var(--fonte-titulo)!important;font-size:24px!important;font-weight:700!important;
+  color:var(--tinta)!important;letter-spacing:-.02em!important;line-height:1.1!important;white-space:nowrap!important;
+  overflow:hidden;text-overflow:ellipsis;
+}
+html body #page .stat-home .trend,
+html body #page .stock-stat-card .trend,
+html body #page .expense-stat span,
+html body #page .expense-stat p,
+html body #page .analytics-kpi span,
+html body #page .analytics-kpi p{
+  display:block;font-size:12px!important;font-weight:600!important;color:var(--tom-txt)!important;
+  margin-top:5px!important;line-height:1.3!important;background:none!important;padding:0!important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+html body #page .analytics-kpi > div:not(.analytics-kpi-icon),
+html body #page .expense-stat > div:not(.expense-stat-icon):not(.expense-mini-bars){min-width:0}
+
+/* tons */
+html body #page [data-tone="pasto"]{--tom:var(--pasto);--tom-soft:var(--pasto-soft);--tom-txt:var(--pasto)}
+html body #page [data-tone="mata"]{--tom:var(--mata);--tom-soft:#DDE8E0;--tom-txt:var(--mata-2)}
+html body #page [data-tone="milho"]{--tom:var(--milho);--tom-soft:var(--milho-soft);--tom-txt:var(--milho-dark)}
+html body #page [data-tone="urucum"]{--tom:var(--urucum);--tom-soft:var(--urucum-soft);--tom-txt:var(--urucum)}
+html body #page [data-tone="ceu"]{--tom:var(--ceu);--tom-soft:var(--ceu-soft);--tom-txt:var(--ceu)}
+html body #page [data-tone="uva"]{--tom:var(--uva);--tom-soft:var(--uva-soft);--tom-txt:var(--uva)}
+html body #page [data-tone="rio"]{--tom:var(--rio);--tom-soft:var(--rio-soft);--tom-txt:var(--rio)}
+
+/* grades de indicadores: mesma distância entre cards */
+html body #page .kpis-home,
+html body #page .stock-kpis,
+html body #page .debt-kpis{gap:16px!important}
+
+/* ---------- Botões ---------- */
+html body .btn{border-radius:var(--raio-ctrl)!important;font-weight:700!important;letter-spacing:0!important}
+html body .btn.primary,
+html body #page .quick-home-btn.featured,
+html body #page .expense-action.primary,
+html body #page .settings-action-btn.primary{
+  background:var(--pasto)!important;color:#fff!important;border:0!important;
+  box-shadow:0 6px 16px -8px rgba(35,133,79,.8)!important;
+}
+html body .btn.primary:hover,
+html body #page .quick-home-btn.featured:hover,
+html body #page .expense-action.primary:hover{background:var(--mata-2)!important}
+html body .btn.soft{background:var(--pasto-soft)!important;color:var(--mata-2)!important;border:0!important}
+html body .btn.outline{background:#fff!important;color:var(--mata-2)!important;border:1px solid var(--linha-forte)!important}
+html body .btn.outline:hover{border-color:var(--pasto)!important;background:#F7FBF6!important}
+html body .btn.danger{background:var(--urucum-soft)!important;color:var(--urucum)!important}
+
+/* botões de ação rápida (Início / Despesas) */
+html body #page .quick-home-btn,
+html body #page .expense-action{
+  border-radius:14px!important;border:1px solid var(--linha)!important;box-shadow:none!important;
+}
+html body #page .quick-home-btn:not(.featured):hover,
+html body #page .expense-action:not(.primary):hover{border-color:var(--pasto)!important;background:#F7FBF6!important}
+html body #page .quick-home-btn .qicon{border-radius:10px!important}
+html body #page .quick-home-btn.featured .qicon{background:var(--milho)!important;color:var(--mata)!important}
+
+/* ícones de ação em tabelas */
+html body #page .icon-btn{border-radius:10px!important;border:1px solid var(--linha)!important;background:#fff!important;color:var(--mata-2)!important}
+html body #page .icon-btn:hover{border-color:var(--pasto)!important;background:var(--pasto-soft)!important}
+html body #page .icon-btn.danger{color:var(--urucum)!important}
+html body #page .icon-btn.danger:hover{border-color:var(--urucum)!important;background:var(--urucum-soft)!important}
+
+/* ---------- Campos ---------- */
+html body #page input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),
+html body #page select,
+html body #page textarea,
+html body .modal input:not([type=checkbox]):not([type=radio]):not([type=file]),
+html body .modal select,
+html body .modal textarea{
+  border-color:var(--linha-forte)!important;border-radius:var(--raio-ctrl)!important;color:var(--tinta)!important;
+  background-color:#FBFCFA!important;
+}
+html body #page input:focus,html body #page select:focus,html body #page textarea:focus,
+html body .modal input:focus,html body .modal select:focus,html body .modal textarea:focus{
+  border-color:var(--pasto)!important;box-shadow:0 0 0 4px rgba(35,133,79,.14)!important;outline:none!important;background-color:#fff!important;
+}
+html body input[type=checkbox],html body input[type=radio]{accent-color:var(--pasto)}
+
+/* ---------- Tabelas ---------- */
+html body #page .table-wrap,
+html body .modal .table-wrap{border-color:var(--linha)!important;border-radius:14px!important}
+html body #page .table thead th,
+html body #page table thead th{
+  background:#F3F6EF!important;color:var(--suave)!important;font-weight:700!important;
+  font-size:11px!important;letter-spacing:.04em!important;border-bottom:1px solid var(--linha)!important;
+}
+html body #page table tbody tr{transition:background .12s}
+html body #page table tbody tr:hover td{background:#F7FAF4!important}
+html body #page table td{border-color:#E8EDE4!important;color:var(--tinta-2)}
+
+/* ---------- Etiquetas de status ---------- */
+html body .badge{border-radius:999px!important;font-weight:700!important;background:var(--pasto-soft)!important;color:var(--pasto)!important}
+html body .badge.warn{background:var(--milho-soft)!important;color:var(--milho-dark)!important}
+html body .badge.danger{background:var(--urucum-soft)!important;color:var(--urucum)!important}
+html body #page .days-pill{background:var(--milho-soft)!important;color:var(--milho-dark)!important}
+
+/* chips de período e filtros de categoria */
+html body #page .period-chip{border-radius:999px!important;border:1px solid var(--linha)!important;background:#F6F8F3!important;color:var(--tinta-2)!important;font-weight:600!important}
+html body #page .stock-chip{border-radius:999px!important;border:1px solid var(--linha-forte)!important;background:#fff!important;color:var(--tinta-2)!important;font-weight:600!important;box-shadow:none!important}
+html body #page .stock-chip:hover{border-color:var(--pasto)!important}
+html body #page .stock-chip.active{background:var(--mata)!important;border-color:var(--mata)!important;color:#fff!important}
+html body #page .stock-page-buttons button.active,
+html body #page .pagination button.active{background:var(--mata)!important;color:#fff!important}
+
+/* links "Ver todas" */
+html body #page .data-head a{color:var(--pasto)!important;font-weight:700!important}
+
+/* ---------- Vendas (PDV) ---------- */
+html body #page .pdv-welcome-strip{
+  background:linear-gradient(110deg,var(--mata) 0%,var(--mata-2) 60%,var(--pasto) 100%)!important;
+  border:0!important;border-radius:var(--raio-card)!important;box-shadow:var(--sombra)!important;
+}
+html body #page .pdv-welcome-strip h2{color:#fff!important;font-family:var(--fonte-titulo)!important}
+html body #page .pdv-toolbar-card,
+html body #page .pdv-hero,
+html body #page [class*="pdv-banner"]{border-radius:var(--raio-card)!important}
+html body #page .pdv-summary-total{background:linear-gradient(135deg,var(--mata),var(--mata-2))!important;border-radius:14px!important}
+html body #page .pdv-summary-total *{color:#fff!important}
+html body #page .pdv-summary-total strong{color:var(--milho)!important;font-family:var(--fonte-titulo)!important}
+
+/* ---------- Gráficos: cores da paleta ---------- */
+html body #page .bar-item span{background:linear-gradient(180deg,var(--broto),var(--pasto))!important}
+html body #page .bar-item:hover span{background:linear-gradient(180deg,var(--milho),#D99A10)!important}
+
+/* ---------- Modais e avisos ---------- */
+html body .modal-card{border-radius:22px!important;border:1px solid var(--linha)!important}
+html body .modal-card h2,html body .modal-card h3{color:var(--mata)!important;font-family:var(--fonte-titulo)!important}
+html body .toast{background:var(--mata)!important;color:#fff!important;border-radius:14px!important;border-left:5px solid var(--milho)!important}
+html body .notification-menu{border-radius:16px!important;border:1px solid var(--linha)!important}
+
+/* ---------- Estados vazios ---------- */
+html body #page .empty,html body #page .small-empty,html body #page .analytics-empty{
+  color:var(--suave)!important;border:1.5px dashed var(--linha-forte)!important;border-radius:14px!important;background:#FAFBF8!important;
+}
+
+/* ---------- Menos movimento para quem prefere ---------- */
+@media (prefers-reduced-motion:reduce){
+  html body *{transition:none!important;animation:none!important}
+  html body #page .card.hover:hover{transform:none}
+}
+
+/* ---------- Celular ---------- */
+@media (max-width:900px){
+  html body .hero,html body .hero.hero-home{
+    min-height:118px!important;border-radius:18px!important;
+    background:
+      linear-gradient(180deg,rgba(11,49,35,.92),rgba(15,61,43,.80)),
+      url('../assets/img/hero-farm-tema.jpg') center/cover no-repeat!important;
+  }
+  html body .hero h1{font-size:26px!important}
+  html body .nav a.active::before{left:-10px}
+  html body #page .stat-home,
+  html body #page .stock-stat-card,
+  html body #page .expense-stat,
+  html body #page .analytics-kpi{min-height:92px!important;padding:14px 14px 14px 18px!important;gap:12px!important;grid-template-columns:42px minmax(0,1fr)!important}
+  html body #page .stat-icon,html body #page .stock-stat-icon,html body #page .expense-stat-icon,html body #page .analytics-kpi-icon{width:42px!important;height:42px!important;min-width:42px!important;border-radius:12px!important}
+  html body #page .stat-home strong,html body #page .stock-stat-card strong,html body #page .expense-stat strong,html body #page .analytics-kpi strong{font-size:20px!important}
+}
+
+/* Início no celular: gráficos e tabelas um embaixo do outro */
+@media (max-width:760px){
+  html body #page .home-main-grid,
+  html body #page .home-tables-grid{grid-template-columns:minmax(0,1fr)!important}
+  html body #page .home-main-grid>*,
+  html body #page .home-tables-grid>*{grid-column:auto!important;min-width:0}
+}

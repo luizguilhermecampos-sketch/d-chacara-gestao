@@ -1,0 +1,27 @@
+D Chácara Empório v2.0 | Novo tema visual
+
+Somente aparência. Nenhuma alteração em app.js, Supabase, cálculos ou dados.
+
+ARQUIVOS NOVOS
+- css/tema.css ............ cores, fontes, cards, botões, tabelas, menu e banner
+- js/tema.js .............. cor de cada card de indicador + ícones nos títulos
+- assets/img/hero-farm-tema.jpg  cópia da foto do banner sem a faixa branca da borda
+  (a hero-farm.jpg original foi mantida)
+
+ARQUIVOS ALTERADOS
+- dashboard, vendas, estoque, entradas, despesas, fiados, clientes,
+  indicadores e configuracoes.html: só incluem tema.css, tema.js e as
+  fontes Bricolage Grotesque + Figtree (Google Fonts).
+
+O QUE MUDOU
+- Paleta da roça: verde-mata, verde-pasto, amarelo-milho, azul-céu e urucum.
+- Cards de indicador iguais em TODAS as telas: ícone, rótulo, valor e
+  legenda no mesmo lugar, com uma faixa colorida à esquerda.
+- Todos os títulos de card com ícone e o mesmo tamanho.
+- Banner do topo em verde escuro sobre a foto, com o título em destaque.
+- Menu lateral com a página atual marcada em amarelo-milho.
+- Celular: no Início, gráficos e tabelas agora ficam um embaixo do outro.
+
+COMO VOLTAR AO VISUAL ANTIGO
+Apague, em cada página .html, o <link ... css/tema.css ...> e o
+<script src="js/tema.js ..."></script>. Nada mais precisa mudar.
