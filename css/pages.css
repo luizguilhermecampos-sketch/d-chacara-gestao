@@ -300,6 +300,14 @@ body[data-page="vendas"] .page{margin-top:12px;gap:12px}
 
 /* FIADO INTEGRADO AO PDV */
 .debt-detail-top{display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:16px}.debt-detail-top h2{margin:0;font-size:22px}.debt-client-full{padding:22px}.debt-client-full h3{font-size:16px;color:#155b3e;margin:24px 0 12px}.debt-detail-actions{display:flex;gap:10px;flex-wrap:wrap;margin:15px 0}.debt-products{min-width:220px;max-width:420px;line-height:1.5;white-space:normal}.debt-list-card [data-open-debt-client]:hover td{background:#eff8f2}.debt-client-full .client-debt-summary{max-width:760px}.debt-client-full .table-wrap{overflow-x:auto}.debt-client-full .debt-table{min-width:760px}
+/* Indicadores de fiados: cards sem ícones devem ocupar toda a largura disponível. */
+.debt-kpis .stock-stat-card{display:flex;align-items:center;min-width:0;min-height:122px;padding:20px 22px;border-left:4px solid #168451;background:#fff}
+.debt-kpis .stock-stat-copy{flex:1;min-width:0;width:100%;overflow:visible}
+.debt-kpis .stock-stat-copy small{font-size:12px;line-height:1.4;white-space:normal;overflow:visible;text-overflow:clip;margin-bottom:10px}
+.debt-kpis .stock-stat-copy strong{font-size:clamp(19px,1.9vw,28px);line-height:1.2;letter-spacing:-.025em;white-space:normal;overflow-wrap:normal;word-break:normal;margin-bottom:5px}
+.debt-kpis .stock-stat-copy .trend{font-size:11px;line-height:1.4;white-space:normal}
+@media(max-width:1250px){.debt-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.debt-kpis .stock-stat-copy strong{font-size:25px}}
+@media(max-width:560px){.debt-kpis{grid-template-columns:1fr 1fr;gap:9px}.debt-kpis .stock-stat-card{padding:14px 12px;min-height:110px}.debt-kpis .stock-stat-copy small{font-size:11px}.debt-kpis .stock-stat-copy strong{font-size:19px}}
 @media(max-width:860px){.debt-client-full{padding:13px}.debt-detail-top{align-items:flex-start}.debt-detail-top h2{width:100%}.debt-detail-actions .btn{flex:1}.debt-list-card .debt-table{min-width:740px}}
 .pdv-pay-grid-five{grid-template-columns:repeat(5,1fr)}
 .pdv-pay.fiado{border-color:#efdcae}.pdv-pay.fiado.active{background:linear-gradient(135deg,#b77a16,#d1972d);border-color:#b77a16}
