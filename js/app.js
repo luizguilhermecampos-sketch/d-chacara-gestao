@@ -2244,7 +2244,7 @@ function renderClientes(){
 
   refreshClientList();
 }
-function renderFiados(){
+function renderFiadosLegacy(){
   const state=renderFiados.state||{search:'',status:'Todos',due:'Todos',selectedClientId:'',page:1};
   renderFiados.state=state;
   const open=data.debts.filter(d=>d.status!=='Pago'&&Number(d.balance||0)>0);
@@ -2323,6 +2323,96 @@ function renderFiados(){
   }
 }
 
+// Visão consolidada: uma linha por ID de cliente, sem modificar os registros financeiros.
+function renderFiados(){
+  const state=renderFiados.state||(renderFiados.state={search:'',status:'Todos',due:'Todos',page:1,clientId:''});
+  const open=data.debts.filter(d=>debtStatusLabel(d)!=='Pago');
+  const late=open.filter(debtIsLate);
+  const total=open.reduce((s,d)=>s+Number(d.balance||0),0);
+  const lateTotal=late.reduce((s,d)=>s+Number(d.balance||0),0);
+  const soonTotal=open.filter(debtIsSoon).reduce((s,d)=>s+Number(d.balance||0),0);
+  const fmtDate=v=>v?dateBR(String(v).slice(0,10)):'-';
+  const saleFor=d=>data.sales.find(s=>s.id===d.saleId);
+  const debtItems=d=>{
+    const sale=saleFor(d);
+    return (sale?.lines||[]).map(l=>`${l.qty}x ${l.name}`).join(', ')||d.description||'Venda fiada';
+  };
+  const clientDebts=id=>data.debts.filter(d=>d.clientId===id);
+  const matching=data.debts.filter(d=>{
+    const c=data.clients.find(x=>x.id===d.clientId);
+    const term=state.search.trim().toLocaleLowerCase('pt-BR');
+    const text=`${c?.name||''} ${c?.phone||''} ${c?.document||''} ${d.description||''} ${debtItems(d)}`.toLocaleLowerCase('pt-BR');
+    if(term&&!text.includes(term))return false;
+    if(state.status!=='Todos'&&debtStatusLabel(d)!==state.status)return false;
+    if(state.due==='Vencidos'&&!debtIsLate(d))return false;
+    if(state.due==='Próximos 7 dias'&&!debtIsSoon(d))return false;
+    if(state.due==='Pagos'&&debtStatusLabel(d)!=='Pago')return false;
+    return true;
+  });
+  const ids=[...new Set(matching.map(d=>d.clientId))];
+  const clients=ids.map(id=>{
+    const c=data.clients.find(x=>x.id===id);
+    const all=clientDebts(id),pending=all.filter(d=>debtStatusLabel(d)!=='Pago');
+    const balances=pending.reduce((s,d)=>s+Number(d.balance||0),0);
+    const earliest=pending.filter(d=>d.due).sort((a,b)=>String(a.due).localeCompare(String(b.due)))[0];
+    const status=pending.some(debtIsLate)?'Em atraso':pending.some(debtIsSoon)?'A vencer':pending.length?'Em dia':'Pago';
+    return {id,c,all,pending,balances,earliest,status};
+  }).sort((a,b)=>a.status==='Em atraso'&&b.status!=='Em atraso'?-1:b.status==='Em atraso'&&a.status!=='Em atraso'?1:(a.c?.name||'').localeCompare(b.c?.name||'','pt-BR'));
+  const perPage=10,pages=Math.max(1,Math.ceil(clients.length/perPage));
+  state.page=Math.min(state.page,pages);
+  const start=(state.page-1)*perPage,visible=clients.slice(start,start+perPage);
+  const selected=data.clients.find(c=>c.id===state.clientId);
+  const selectedDebts=selected?clientDebts(selected.id).slice().sort((a,b)=>String(b.createdAt||b.due||'').localeCompare(String(a.createdAt||a.due||''))):[];
+  const payments=selected?clientPayments(selected.id):[];
+  const control=`<div class="debt-tabs"><a class="active" href="fiados.html">${ic('credit')}Contas a Receber (Fiados)</a><a href="clientes.html">${ic('users')}Clientes</a><button class="btn primary" id="newDebt">${ic('cart')}Nova Venda Fiada</button></div>`;
+  const kpis=`<div class="grid debt-kpis">
+    <article class="card stock-stat-card"><div class="stock-stat-copy"><small>Total em Aberto</small><strong>${money(total)}</strong></div></article>
+    <article class="card stock-stat-card"><div class="stock-stat-copy"><small>Em Atraso</small><strong>${money(lateTotal)}</strong><div class="trend bad">${new Set(late.map(d=>d.clientId)).size} cliente(s)</div></div></article>
+    <article class="card stock-stat-card"><div class="stock-stat-copy"><small>A Vencer em 7 Dias</small><strong>${money(soonTotal)}</strong></div></article>
+    <article class="card stock-stat-card"><div class="stock-stat-copy"><small>Clientes com Fiados</small><strong>${new Set(data.debts.map(d=>d.clientId)).size}</strong></div></article>
+  </div>`;
+  let body='';
+  if(selected){
+    const pending=selectedDebts.filter(d=>debtStatusLabel(d)!=='Pago');
+    const pendingSum=pending.reduce((s,d)=>s+Number(d.balance||0),0);
+    const overdue=pending.filter(debtIsLate).reduce((s,d)=>s+Number(d.balance||0),0);
+    body=`<div class="card debt-client-full">
+      <div class="debt-detail-top"><button class="btn outline" id="backDebtClients">${ic('arrow-left')} Voltar aos clientes</button><h2>${esc(selected.name)}</h2><span class="client-active-badge">${selectedDebts.length} compra(s)</span></div>
+      <div class="client-contact-list"><div>${ic('users')} ${esc(formatPhoneBR(selected.phone))}</div><div>CPF/CNPJ: ${esc(selected.document||'-')}</div></div>
+      <div class="client-debt-summary"><div class="danger"><small>Total em aberto</small><strong>${money(pendingSum)}</strong></div><div class="danger"><small>Em atraso</small><strong>${money(overdue)}</strong></div><div class="success"><small>A vencer</small><strong>${money(pendingSum-overdue)}</strong></div></div>
+      <div class="debt-detail-actions"><button class="btn primary" id="clientNewSale">${ic('cart')} Nova Venda Fiada</button><button class="btn outline" id="clientEdit">${ic('edit')} Editar Cliente</button></div>
+      <h3>Histórico de compras e vencimentos</h3>
+      <div class="table-wrap"><table class="table debt-table"><thead><tr><th>Compra</th><th>Produtos / descrição</th><th>Vencimento</th><th>Valor</th><th>Saldo</th><th>Status</th><th>Ações</th></tr></thead><tbody>${selectedDebts.map(d=>{
+        const sale=saleFor(d),status=debtStatusLabel(d);
+        return `<tr><td>${esc(fmtDate(sale?.date||d.createdAt))}<small class="due-note">${esc(sale?.id?String(sale.id).slice(-8):'Registro manual')}</small></td><td class="debt-products">${esc(debtItems(d))}</td><td>${esc(fmtDate(d.due))}</td><td>${money(d.value)}</td><td><strong>${money(d.balance)}</strong></td><td><span class="debt-status ${debtStatusClass(d)}">${status}</span></td><td><div class="stock-actions">${status!=='Pago'?`<button class="icon-btn" data-pay-debt="${esc(d.id)}" title="Registrar pagamento">${ic('wallet')}</button>`:''}<button class="icon-btn" data-edit-debt="${esc(d.id)}" title="Editar vencimento ou fiado">${ic('edit')}</button>${!d.saleId?`<button class="icon-btn danger" data-del-debt="${esc(d.id)}" title="Excluir fiado manual">${ic('trash')}</button>`:''}</div></td></tr>`;
+      }).join('')||'<tr><td colspan="7">Nenhuma compra registrada.</td></tr>'}</tbody></table></div>
+      <h3>Histórico de pagamentos</h3><div class="table-wrap"><table class="table debt-table"><thead><tr><th>Data</th><th>Forma</th><th>Valor</th><th>Observação</th></tr></thead><tbody>${payments.map(p=>`<tr><td>${esc(fmtDate(p.date))}</td><td>${esc(p.method||'-')}</td><td>${money(p.value)}</td><td>${esc(p.obs||'-')}</td></tr>`).join('')||'<tr><td colspan="4">Nenhum pagamento registrado.</td></tr>'}</tbody></table></div>
+    </div>`;
+  }else{
+    body=`<div class="card debt-list-card">${control}
+      <div class="debt-toolbar"><label class="debt-search"><i>${ic('report')}</i><input id="debtSearch" value="${esc(state.search)}" placeholder="Buscar cliente, telefone, CPF/CNPJ ou produto..."></label><select id="debtStatus">${['Todos','Em atraso','A vencer','Em dia','Pago'].map(s=>`<option ${state.status===s?'selected':''}>${s}</option>`).join('')}</select><select id="debtDue">${['Todos','Vencidos','Próximos 7 dias','Pagos'].map(s=>`<option ${state.due===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="table-wrap"><table class="table debt-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Compras</th><th>Próximo vencimento</th><th>Saldo em aberto</th><th>Status</th><th>Detalhes</th></tr></thead><tbody>${visible.map(x=>`<tr data-open-debt-client="${esc(x.id)}"><td><div class="client-name-cell"><span class="client-avatar-sm">${clientInitials(x.c?.name||'CL')}</span><strong>${esc(x.c?.name||'Cliente não cadastrado')}</strong></div></td><td>${esc(formatPhoneBR(x.c?.phone))}</td><td>${x.all.length}</td><td>${esc(fmtDate(x.earliest?.due))}</td><td><strong>${money(x.balances)}</strong></td><td><span class="debt-status ${x.status==='Em atraso'?'danger':x.status==='A vencer'?'warn':x.status==='Pago'?'success':'normal'}">${x.status}</span></td><td><button class="btn outline" data-open-detail="${esc(x.id)}">Ver histórico</button></td></tr>`).join('')||'<tr><td colspan="7">Nenhum cliente encontrado.</td></tr>'}</tbody></table></div>
+      <div class="stock-pagination"><span>Exibindo ${clients.length?start+1:0} a ${Math.min(start+perPage,clients.length)} de ${clients.length} cliente(s)</span><div class="stock-page-buttons">${Array.from({length:pages},(_,i)=>i+1).map(n=>`<button class="${n===state.page?'active':''}" data-debt-page="${n}">${n}</button>`).join('')}</div></div>
+    </div>`;
+  }
+  $('#page').innerHTML=kpis+body;
+  if($('#newDebt'))$('#newDebt').onclick=()=>location.href='vendas.html';
+  if(selected){
+    $('#backDebtClients').onclick=()=>{state.clientId='';renderFiados()};
+    $('#clientNewSale').onclick=()=>{sessionStorage.setItem('pdv_prefill_client',selected.id);location.href='vendas.html'};
+    $('#clientEdit').onclick=()=>clientForm(selected);
+    $$('[data-pay-debt]').forEach(b=>b.onclick=()=>paymentForm(data.debts.find(d=>d.id===b.dataset.payDebt)));
+    $$('[data-edit-debt]').forEach(b=>b.onclick=()=>debtForm(data.debts.find(d=>d.id===b.dataset.editDebt)));
+    $$('[data-del-debt]').forEach(b=>b.onclick=()=>{const d=data.debts.find(x=>x.id===b.dataset.delDebt);if(!d||d.saleId||!confirm('Excluir este fiado manual?'))return;data.payments=data.payments.filter(p=>p.debtId!==d.id);data.debts=data.debts.filter(x=>x!==d);save();renderFiados()});
+  }else{
+    const input=$('#debtSearch');let timer;
+    input.oninput=e=>{state.search=e.target.value;state.page=1;const pos=e.target.selectionStart;clearTimeout(timer);timer=setTimeout(()=>{renderFiados();const next=$('#debtSearch');next?.focus();try{next?.setSelectionRange(pos,pos)}catch(_){}},160)};
+    $('#debtStatus').onchange=e=>{state.status=e.target.value;state.page=1;renderFiados()};
+    $('#debtDue').onchange=e=>{state.due=e.target.value;state.page=1;renderFiados()};
+    $$('[data-debt-page]').forEach(b=>b.onclick=()=>{state.page=Number(b.dataset.debtPage);renderFiados()});
+    $$('[data-open-debt-client]').forEach(row=>row.onclick=()=>{state.clientId=row.dataset.openDebtClient;renderFiados()});
+  }
+}
 function analyticsDate(v){return String(v||'').slice(0,10)}
 function analyticsInRange(v,start,end){const d=analyticsDate(v);return (!start||d>=start)&&(!end||d<=end)}
 function analyticsMonthKey(v){return analyticsDate(v).slice(0,7)}
